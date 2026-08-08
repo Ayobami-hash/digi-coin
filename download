@@ -1,0 +1,97 @@
+# DigiCoin backend
+
+A small Express + SQLite backend for the DigiCoin referral app, with Stripe-powered
+"Premium" activation. Paying unlocks **feature access** (custom referral code,
+referral analytics, a support badge) — not a payout or daily earnings. That's an
+intentional choice: guaranteed daily "earnings" funded by other users' payments is
+the mechanic that makes an app a Ponzi scheme, and this backend doesn't do that.
+
+## 1. Install dependencies
+
+```bash
+cd digicoin-backend
+npm install
+```
+
+## 2. Create a Stripe account (free, takes ~2 minutes)
+
+1. Go to https://dashboard.stripe.com/register and sign up.
+2. You'll land in **Test mode** by default (toggle top-right) — stay in test mode
+   while you build. Test mode lets you "pay" with fake card numbers, no real money moves.
+3. Go to **Developers → API keys**. Copy the **Publishable key** (`pk_test_...`) and
+   **Secret key** (`sk_test_...`).
+
+## 3. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Paste your `pk_test_...` and `sk_test_...` into `.env`. Leave `STRIPE_WEBHOOK_SECRET`
+for now — you'll get that in the next step.
+
+## 4. Forward Stripe webhooks to your machine (local dev)
+
+Stripe needs to tell your backend when a payment succeeds. Locally, use the Stripe CLI:
+
+1. Install it: https://docs.stripe.com/stripe-cli (or `brew install stripe/stripe-cli/stripe` on Mac)
+2. Run:
+   ```bash
+   stripe login
+   stripe listen --forward-to localhost:4000/api/payments/webhook
+   ```
+3. It prints a line like `Your webhook signing secret is whsec_...` — paste that
+   into `.env` as `STRIPE_WEBHOOK_SECRET`. Keep this terminal window running while you test.
+
+(In production, you'd instead add a webhook endpoint in the Stripe Dashboard
+pointing at `https://yourdomain.com/api/payments/webhook` and use the secret it gives you.)
+
+## 5. Run the server
+
+```bash
+npm start
+```
+
+You should see `DigiCoin backend running on http://localhost:4000`.
+
+## 6. Test it
+
+- Test the API directly: `curl -X POST localhost:4000/api/users -H "Content-Type: application/json" -d '{"name":"Ada"}'`
+- Use Stripe's test card `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP,
+  when you get to Checkout — it'll simulate a successful payment.
+
+## API reference
+
+| Method | Path | Body | Description |
+|---|---|---|---|
+| POST | `/api/users` | `{ name }` | Create a profile, returns referral code + id |
+| GET | `/api/users/:id` | — | Fetch profile, referrals, tasks, balance, premium status |
+| POST | `/api/users/:id/referrals` | `{ friendName }` | Record a referral |
+| POST | `/api/users/:id/tasks/:taskId/toggle` | — | Toggle an engagement task |
+| POST | `/api/payments/create-checkout-session` | `{ userId }` | Returns a Stripe Checkout URL to redirect the user to |
+| GET | `/api/payments/config` | — | Returns the Stripe publishable key |
+
+## Wiring up the frontend
+
+Replace the `window.storage` calls in `digicoin-rewards.jsx` with `fetch` calls to
+this backend (e.g. `http://localhost:4000/api/...`), store the returned `id` in
+React state (or `localStorage`, which is fine on the client) so you can re-fetch
+the profile on reload, and add a "Go Premium" button:
+
+```js
+async function goPremium() {
+  const res = await fetch("http://localhost:4000/api/payments/create-checkout-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId: profile.id }),
+  });
+  const { url } = await res.json();
+  window.location.href = url; // sends the user to Stripe's hosted checkout page
+}
+```
+
+Then gate premium-only UI behind `profile.premium` (e.g. only show a custom
+referral-code editor or the analytics panel when `profile.premium === true`).
+
+Happy to wire this into the React file directly, and build the analytics/custom-code
+premium features themselves, if you want the next pass.
