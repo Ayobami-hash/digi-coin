@@ -61,11 +61,12 @@ const PLANS = [
 app.get("/api/plans", (req, res) => {
   const userId = req.query.userId;
   const currentPlanId = userId ? userPlans[userId] : null;
-  const currentPlan = currentPlanId ? PLANS.find((p) => p.id === currentPlanId) : PLANS[0];
+  const currentPlan = currentPlanId ? PLANS.find((p) => p.id === currentPlanId) : null;
 
   res.json({
     plans: PLANS,
-    currentPlan: currentPlan || null,
+    currentPlan,
+    tasksLocked: !Boolean(currentPlan),
   });
 });
 
@@ -89,6 +90,7 @@ app.post("/api/upgrade-plan", (req, res) => {
     success: true,
     message: `Upgraded to ${plan.name}`,
     currentPlan: plan,
+    tasksLocked: false,
   });
 });
 
@@ -98,11 +100,12 @@ app.get("/api/user/:userId/plan", (req, res) => {
   const currentPlanId = userPlans[userId];
   const currentPlan = currentPlanId
     ? PLANS.find((p) => p.id === currentPlanId)
-    : PLANS[0];
+    : null;
 
   res.json({
     userId,
-    currentPlan: currentPlan || null,
+    currentPlan,
+    tasksLocked: !Boolean(currentPlan),
   });
 });
 

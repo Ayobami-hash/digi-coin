@@ -30,7 +30,7 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
       setPlans(data.plans || []);
       const nextPlan = data.currentPlan || null;
       setCurrentPlan(nextPlan);
-      onPlanChange?.(nextPlan);
+      onPlanChange?.(nextPlan, data.tasksLocked);
     } catch (err) {
       setError(err.message || "Could not load plans");
       console.error("Error fetching plans:", err);
@@ -54,7 +54,7 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
       const data = await response.json();
       const nextPlan = data.currentPlan;
       setCurrentPlan(nextPlan);
-      onPlanChange?.(nextPlan);
+      onPlanChange?.(nextPlan, data.tasksLocked);
       setError("");
     } catch (err) {
       setError(err.message || "Could not complete upgrade");

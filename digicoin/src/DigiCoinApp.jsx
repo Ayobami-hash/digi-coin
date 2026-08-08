@@ -40,6 +40,7 @@ export default function DigiCoinApp() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [showUpgradePlan, setShowUpgradePlan] = useState(false);
   const [currentPlan, setCurrentPlan] = useState(null);
+  const [tasksLocked, setTasksLocked] = useState(true);
 
   // Fetch user's current plan when profile loads
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function DigiCoinApp() {
         if (response.ok) {
           const data = await response.json();
           setCurrentPlan(data.currentPlan);
+          setTasksLocked(Boolean(data.tasksLocked));
         }
       } catch (err) {
         console.error("Error fetching plan:", err);
@@ -98,19 +100,21 @@ export default function DigiCoinApp() {
     const friend = friendInput.trim();
     if (!friend || !profile) return;
     const referral = { id: `${Date.now()}`, name: friend, date: new Date().toISOString() };
-    const next = { ...profile, referrals: [referral, ...profile.referrals] };
+    const referrals = Array.isArray(profile.referrals) ? profile.referrals : [];
+    const next = { ...profile, referrals: [referral, ...referrals] };
     saveProfile(next);
     setFriendInput("");
   }
 
   function toggleTask(taskId) {
-    if (!profile || !currentPlan) return;
-    const done = profile.tasksCompleted.includes(taskId);
+    if (!profile || tasksLocked) return;
+    const tasksCompleted = Array.isArray(profile.tasksCompleted) ? profile.tasksCompleted : [];
+    const done = tasksCompleted.includes(taskId);
     const next = {
       ...profile,
       tasksCompleted: done
-        ? profile.tasksCompleted.filter((id) => id !== taskId)
-        : [...profile.tasksCompleted, taskId],
+        ? tasksCompleted.filter((id) => id !== taskId)
+        : [...tasksCompleted, taskId],
     };
     saveProfile(next);
   }
@@ -145,13 +149,13 @@ export default function DigiCoinApp() {
     setTimeout(() => setCopied(false), 1800);
   }
 
-  const count = profile?.referrals?.length || 0;
-  const taskCredit = profile
-    ? profile.tasksCompleted.reduce((sum, id) => {
-        const t = TASKS.find((x) => x.id === id);
-        return sum + (t ? t.reward : 0);
-      }, 0)
-    : 0;
+  const referrals = Array.isArray(profile?.referrals) ? profile.referrals : [];
+  const tasksCompleted = Array.isArray(profile?.tasksCompleted) ? profile.tasksCompleted : [];
+  const count = referrals.length;
+  const taskCredit = tasksCompleted.reduce((sum, id) => {
+    const t = TASKS.find((x) => x.id === id);
+    return sum + (t ? t.reward : 0);
+  }, 0);
   const balance = referralCredit(count) + taskCredit;
   const upcoming = nextTier(count);
 
@@ -226,7 +230,10 @@ export default function DigiCoinApp() {
         <UpgradePlan
           profile={profile}
           onBack={() => setShowUpgradePlan(false)}
-          onPlanChange={(plan) => setCurrentPlan(plan)}
+          onPlanChange={(plan, locked) => {
+            setCurrentPlan(plan);
+            setTasksLocked(Boolean(locked));
+          }}
         />
       )}
 
@@ -332,7 +339,7 @@ export default function DigiCoinApp() {
 
           <div style={styles.card}>
             <p style={styles.eyebrow}>Engagement tasks</p>
-            {!currentPlan ? (
+            {!currentPlan || tasksLocked ? (
               <div style={styles.lockedSection}>
                 <div style={styles.lockIconBox}>
                   <Lock size={56} color="#F3F2FA" strokeWidth={2.5} fill="#8B5CF6" />
@@ -352,7 +359,7 @@ export default function DigiCoinApp() {
                 <p style={styles.hint}>Mark tasks off as you complete them to add DGC to your balance.</p>
                 <div style={{ marginTop: 8 }}>
                   {TASKS.map((task) => {
-                    const done = profile.tasksCompleted.includes(task.id);
+                    const done = tasksCompleted.includes(task.id);
                     const Icon = task.icon;
                     return (
                       <div
@@ -412,11 +419,11 @@ export default function DigiCoinApp() {
             </form>
           </div>
 
-          {profile.referrals.length > 0 && (
+          {referrals.length > 0 && (
             <div style={styles.card}>
               <p style={styles.eyebrow}>Activity</p>
               <div>
-                {profile.referrals.map((r) => (
+                {referrals.map((r) => (
                   <div key={r.id} style={styles.activityRow}>
                     <span style={styles.activityName}>{r.name}</span>
                     <span style={styles.activityDate}>{new Date(r.date).toLocaleDateString()}</span>
