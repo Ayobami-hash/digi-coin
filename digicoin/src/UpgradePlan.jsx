@@ -12,6 +12,9 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
   const [plans, setPlans] = useState([]);
   const [currentPlan, setCurrentPlan] = useState(null);
   const [error, setError] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   useEffect(() => {
     fetchPlans();
@@ -39,26 +42,42 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
     }
   }
 
-  async function handleUpgrade(planId) {
+  function beginPayment(plan) {
+    setSelectedPlan(plan);
+    setPaymentSuccess(false);
+    setError("");
+  }
+
+  async function handlePayment() {
+    if (!selectedPlan) return;
     try {
+      setPaymentProcessing(true);
       const userId = profile?.id || profile?.code;
-      const response = await fetch("/api/upgrade-plan", {
+      const response = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId,
-          planId,
+          planId: selectedPlan.id,
         }),
       });
-      if (!response.ok) throw new Error("Upgrade failed");
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Could not start checkout");
+      }
+
       const data = await response.json();
-      const nextPlan = data.currentPlan;
-      setCurrentPlan(nextPlan);
-      onPlanChange?.(nextPlan, data.tasksLocked);
-      setError("");
+      if (!data.url) {
+        throw new Error("Paystack did not return a checkout URL");
+      }
+
+      window.location.assign(data.url);
     } catch (err) {
-      setError(err.message || "Could not complete upgrade");
-      console.error("Error upgrading plan:", err);
+      setError(err.message || "Could not complete payment");
+      console.error("Error starting Paystack checkout:", err);
+    } finally {
+      setPaymentProcessing(false);
     }
   }
 
@@ -115,7 +134,7 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
         </div>
       )}
 
-      {!loading && plans.length > 0 && (
+      {!loading && plans.length > 0 && !selectedPlan && (
         <div style={styles.plansContainer}>
           {plans.map((plan, index) => {
             const isActive = currentPlan?.id === plan.id;
@@ -175,7 +194,7 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
 
                 <button
                   className="dc-btn"
-                  onClick={() => handleUpgrade(plan.id)}
+                  onClick={() => beginPayment(plan)}
                   disabled={isActive}
                   style={{
                     width: "100%",
@@ -185,11 +204,55 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
                     cursor: isActive ? "default" : "pointer",
                   }}
                 >
-                  {isActive ? "Currently Active" : "Upgrade to this plan"}
+                  {isActive ? "Currently Active" : "Pay for this plan"}
                 </button>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {selectedPlan && (
+        <div style={styles.card}>
+          <h2 style={{ margin: 0, marginBottom: 14 }}>{paymentSuccess ? "Payment Complete" : `Pay for ${selectedPlan.name}`}</h2>
+          <p style={styles.hint}>
+            {paymentSuccess
+              ? "Your plan is active. Engagement tasks are now unlocked."
+              : "Complete the payment to unlock engagement tasks and start earning rewards."
+            }
+          </p>
+          <div style={styles.paymentBox}>
+            <div style={styles.paymentRow}>
+              <span>Plan</span>
+              <strong>{selectedPlan.name}</strong>
+            </div>
+            <div style={styles.paymentRow}>
+              <span>Amount</span>
+              <strong>{typeof selectedPlan.activation === "number" ? `₦${selectedPlan.activation.toLocaleString()}` : selectedPlan.activation}</strong>
+            </div>
+            <div style={styles.paymentRow}>
+              <span>Rewards</span>
+              <strong>{selectedPlan.dailyEarnings ? `${selectedPlan.dailyEarnings}/day` : "—"}</strong>
+            </div>
+          </div>
+          {!paymentSuccess ? (
+            <button
+              className="dc-btn dc-btn-primary"
+              onClick={handlePayment}
+              disabled={paymentProcessing}
+              style={{ width: "100%", marginTop: 18 }}
+            >
+              {paymentProcessing ? "Processing payment…" : "Confirm payment"}
+            </button>
+          ) : (
+            <button
+              className="dc-btn"
+              onClick={() => setSelectedPlan(null)}
+              style={{ width: "100%", marginTop: 18, background: "#E1E0EA", color: "#33346B" }}
+            >
+              Back to plans
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -322,5 +385,20 @@ const styles = {
   minimumValue: {
     fontWeight: 600,
     color: "#33346B",
+  },
+  paymentBox: {
+    background: "#F8FAFC",
+    border: "1px solid #E2E8F0",
+    borderRadius: 16,
+    padding: "18px",
+    marginTop: 18,
+  },
+  paymentRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 0",
+    borderBottom: "1px solid #E2E8F0",
+    fontSize: 14,
   },
 };

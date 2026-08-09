@@ -6,6 +6,9 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5175";
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || null;
+const PAYSTACK_BASE_URL = "https://api.paystack.co";
 
 app.use(cors());
 app.use(express.json());
@@ -70,6 +73,56 @@ app.get("/api/plans", (req, res) => {
   });
 });
 
+// POST /api/create-checkout-session - Create a Paystack checkout transaction for a plan
+app.post("/api/create-checkout-session", async (req, res) => {
+  if (!PAYSTACK_SECRET_KEY) {
+    return res.status(500).json({ error: "Paystack is not configured. Set PAYSTACK_SECRET_KEY in the backend .env." });
+  }
+
+  const { userId, planId } = req.body;
+  if (!userId || !planId) {
+    return res.status(400).json({ error: "userId and planId are required" });
+  }
+
+  const plan = PLANS.find((p) => p.id === planId);
+  if (!plan) {
+    return res.status(404).json({ error: "Plan not found" });
+  }
+
+  try {
+    const email = `${userId}@digicoin.local`;
+    const amount = Math.round((plan.activation || 0) * 100);
+    const response = await fetch(`${PAYSTACK_BASE_URL}/transaction/initialize`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        amount,
+        currency: "NGN",
+        callback_url: `${FRONTEND_URL}/`,
+        metadata: {
+          userId,
+          planId,
+        },
+      }),
+    });
+
+    const body = await response.json();
+    if (!response.ok || !body.status) {
+      console.error("Paystack initialization failed:", body);
+      return res.status(500).json({ error: body.message || "Could not create Paystack transaction" });
+    }
+
+    res.json({ url: body.data.authorization_url });
+  } catch (error) {
+    console.error("Paystack checkout session creation failed:", error);
+    res.status(500).json({ error: "Could not create Paystack transaction" });
+  }
+});
+
 // POST /api/upgrade-plan - Upgrade user to a new plan
 app.post("/api/upgrade-plan", (req, res) => {
   const { userId, planId } = req.body;
@@ -107,6 +160,54 @@ app.get("/api/user/:userId/plan", (req, res) => {
     currentPlan,
     tasksLocked: !Boolean(currentPlan),
   });
+});
+
+// GET /api/confirm-checkout - Confirm Paystack transaction and upgrade plan
+app.get("/api/confirm-checkout", async (req, res) => {
+  if (!PAYSTACK_SECRET_KEY) {
+    return res.status(500).json({ error: "Paystack is not configured. Set PAYSTACK_SECRET_KEY in the backend .env." });
+  }
+
+  const reference = req.query.reference;
+  if (!reference) {
+    return res.status(400).json({ error: "reference is required" });
+  }
+
+  try {
+    const response = await fetch(`${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+      },
+    });
+    const body = await response.json();
+
+    if (!response.ok || !body.status || body.data.status !== "success") {
+      console.error("Paystack verification failed:", body);
+      return res.status(400).json({ error: body.message || "Payment has not completed" });
+    }
+
+    const { userId, planId } = body.data.metadata || {};
+    if (!userId || !planId) {
+      return res.status(400).json({ error: "Missing metadata on Paystack transaction" });
+    }
+
+    const plan = PLANS.find((p) => p.id === planId);
+    if (!plan) {
+      return res.status(404).json({ error: "Plan not found" });
+    }
+
+    userPlans[userId] = planId;
+
+    res.json({
+      success: true,
+      currentPlan: plan,
+      tasksLocked: false,
+    });
+  } catch (error) {
+    console.error("Paystack session confirm failed:", error);
+    res.status(500).json({ error: "Could not confirm Paystack transaction" });
+  }
 });
 
 // Health check

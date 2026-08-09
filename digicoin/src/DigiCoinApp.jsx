@@ -78,6 +78,48 @@ export default function DigiCoinApp() {
     })();
   }, []);
 
+  // Detect Paystack redirect results and confirm checkout if needed
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get("reference");
+    const canceled = params.get("canceled");
+    if (!reference && !canceled) return;
+
+    const cleanupUrl = window.location.pathname;
+    const clearParams = () => window.history.replaceState({}, document.title, cleanupUrl);
+
+    if (canceled) {
+      setError("Payment was canceled. You can try again from Deposit & Plans.");
+      clearParams();
+      return;
+    }
+
+    async function confirmCheckout() {
+      try {
+        const url = new URL("/api/confirm-checkout", window.location.origin);
+        url.searchParams.append("reference", reference);
+
+        const response = await fetch(url.toString());
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Payment confirmation failed.");
+        }
+
+        setCurrentPlan(data.currentPlan);
+        setTasksLocked(Boolean(data.tasksLocked));
+        setError("");
+      } catch (err) {
+        setError(err.message || "Could not confirm payment");
+        console.error("Error confirming Paystack checkout:", err);
+      } finally {
+        clearParams();
+      }
+    }
+
+    confirmCheckout();
+  }, []);
+
   async function saveProfile(next) {
     setProfile(next);
     try {
