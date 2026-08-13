@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Coins, Copy, Check, Share2, ThumbsUp, MessageSquare, UserPlus, Wallet, RotateCcw, ArrowRight, Sparkles, TrendingUp, Lock } from "lucide-react";
+import { Coins, Copy, Check, Share2, ThumbsUp, MessageSquare, UserPlus, Wallet, RotateCcw, ArrowRight, Sparkles, TrendingUp, Lock, LogOut } from "lucide-react";
 import UpgradePlan from "./UpgradePlan";
+import { useAuth } from "./context/AuthContext";
 
 const TIERS = [
   { threshold: 1, reward: 50, label: "First referral" },
@@ -16,12 +17,6 @@ const TASKS = [
   { id: "invite", icon: UserPlus, label: "Tag 3 friends in a comment", reward: 25 },
 ];
 
-function makeCode(name) {
-  const base = (name || "farmer").replace(/[^a-zA-Z]/g, "").slice(0, 6).toUpperCase() || "FARMER";
-  const suffix = Math.floor(1000 + Math.random() * 9000);
-  return `${base}-${suffix}`;
-}
-
 function referralCredit(count) {
   return TIERS.reduce((sum, t) => (count >= t.threshold ? t.reward : sum), 0);
 }
@@ -31,9 +26,10 @@ function nextTier(count) {
 }
 
 export default function DigiCoinApp() {
-  const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState(null);
-  const [nameInput, setNameInput] = useState("");
+  // `user` is the authenticated Laravel user (from Sanctum session).
+  // Identity/profile no longer comes from localStorage — it comes from the backend.
+  const { user, logout } = useAuth();
+
   const [friendInput, setFriendInput] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
@@ -42,14 +38,19 @@ export default function DigiCoinApp() {
   const [currentPlan, setCurrentPlan] = useState(null);
   const [tasksLocked, setTasksLocked] = useState(true);
 
-  // Fetch user's current plan when profile loads
+  // TODO: referrals/tasksCompleted are still local-only (reset on refresh).
+  // These need real endpoints (GET/POST /api/referrals, /api/tasks) scoped
+  // to the authenticated user, same pattern as /api/plans — build these next.
+  const [referrals, setReferrals] = useState([]);
+  const [tasksCompleted, setTasksCompleted] = useState([]);
+
+  // Fetch user's current plan once we know who they are
   useEffect(() => {
-    if (!profile) return;
+    if (!user) return;
     (async () => {
       try {
-        const userId = profile.id || profile.code;
-        const url = new URL("/api/user/" + userId + "/plan", window.location.origin);
-        const response = await fetch(url.toString());
+        const url = new URL("/api/user/" + user.id + "/plan", import.meta.env.VITE_API_URL); 
+        const response = await fetch(url.toString(), { credentials: "include" });
         if (response.ok) {
           const data = await response.json();
           setCurrentPlan(data.currentPlan);
@@ -59,24 +60,7 @@ export default function DigiCoinApp() {
         console.error("Error fetching plan:", err);
       }
     })();
-  }, [profile?.code]);
-
-  // Load profile from storage on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const stored = localStorage.getItem("profile");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed) setProfile(parsed);
-        }
-      } catch (e) {
-        // no existing profile
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  }, [user?.id]);
 
   // Detect Paystack redirect results and confirm checkout if needed
   useEffect(() => {
@@ -99,7 +83,7 @@ export default function DigiCoinApp() {
         const url = new URL("/api/confirm-checkout", window.location.origin);
         url.searchParams.append("reference", reference);
 
-        const response = await fetch(url.toString());
+        const response = await fetch(url.toString(), { credentials: "include" });
         const data = await response.json();
 
         if (!response.ok) {
@@ -120,45 +104,20 @@ export default function DigiCoinApp() {
     confirmCheckout();
   }, []);
 
-  async function saveProfile(next) {
-    setProfile(next);
-    try {
-      localStorage.setItem("profile", JSON.stringify(next));
-    } catch (e) {
-      setError("Couldn't save your progress. Your changes will only last this session.");
-    }
-  }
-
-  function handleCreateProfile(e) {
-    e.preventDefault();
-    const name = nameInput.trim();
-    if (!name) return;
-    const next = { name, code: makeCode(name), createdAt: Date.now(), referrals: [], tasksCompleted: [] };
-    saveProfile(next);
-  }
-
   function handleAddReferral(e) {
     e.preventDefault();
     const friend = friendInput.trim();
-    if (!friend || !profile) return;
+    if (!friend) return;
     const referral = { id: `${Date.now()}`, name: friend, date: new Date().toISOString() };
-    const referrals = Array.isArray(profile.referrals) ? profile.referrals : [];
-    const next = { ...profile, referrals: [referral, ...referrals] };
-    saveProfile(next);
+    setReferrals((prev) => [referral, ...prev]);
     setFriendInput("");
   }
 
   function toggleTask(taskId) {
-    if (!profile || tasksLocked) return;
-    const tasksCompleted = Array.isArray(profile.tasksCompleted) ? profile.tasksCompleted : [];
-    const done = tasksCompleted.includes(taskId);
-    const next = {
-      ...profile,
-      tasksCompleted: done
-        ? tasksCompleted.filter((id) => id !== taskId)
-        : [...tasksCompleted, taskId],
-    };
-    saveProfile(next);
+    if (tasksLocked) return;
+    setTasksCompleted((prev) =>
+      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]
+    );
   }
 
   function handleReset() {
@@ -166,33 +125,24 @@ export default function DigiCoinApp() {
       setConfirmReset(true);
       return;
     }
-    try {
-      localStorage.removeItem("profile");
-    } catch (e) {
-      // ignore
-    }
-    setProfile(null);
+    setReferrals([]);
+    setTasksCompleted([]);
     setConfirmReset(false);
   }
 
-  function handleGoBack() {
-    setProfile(null);
-    setNameInput(profile?.name || "");
-    setFriendInput("");
-    setError("");
-    setConfirmReset(false);
+  async function handleSignOut() {
+    await logout();
   }
 
   function handleCopy() {
-    if (!profile) return;
-    const link = `digicoin.app/join?ref=${profile.code}`;
-    navigator.clipboard?.writeText(link).catch(() => {});
+    if (!user) return;
+    const code = user.referral_code || user.id; // fallback until referral_code column exists
+    const link = `digicoin.app/join?ref=${code}`;
+    navigator.clipboard?.writeText(link).catch(() => { });
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   }
 
-  const referrals = Array.isArray(profile?.referrals) ? profile.referrals : [];
-  const tasksCompleted = Array.isArray(profile?.tasksCompleted) ? profile.tasksCompleted : [];
   const count = referrals.length;
   const taskCredit = tasksCompleted.reduce((sum, id) => {
     const t = TASKS.find((x) => x.id === id);
@@ -200,6 +150,9 @@ export default function DigiCoinApp() {
   }, 0);
   const balance = referralCredit(count) + taskCredit;
   const upcoming = nextTier(count);
+  const referralCode = user?.referral_code || `USER-${user?.id ?? "----"}`;
+
+  if (!user) return null; // Gate in App.jsx already handles unauthenticated state
 
   return (
     <div style={styles.page}>
@@ -264,13 +217,9 @@ export default function DigiCoinApp() {
         }
       `}</style>
 
-      {loading && (
-        <div style={{ ...styles.card, textAlign: "center", color: "#63627A" }}>Loading your wallet…</div>
-      )}
-
-      {!loading && showUpgradePlan && profile && (
+      {showUpgradePlan && (
         <UpgradePlan
-          profile={profile}
+          profile={user}
           onBack={() => setShowUpgradePlan(false)}
           onPlanChange={(plan, locked) => {
             setCurrentPlan(plan);
@@ -279,37 +228,12 @@ export default function DigiCoinApp() {
         />
       )}
 
-      {!loading && !profile && (
-        <div style={styles.card}>
-          <div style={styles.brandRow}>
-            <Coins size={22} color="#C99A3D" strokeWidth={2} />
-            <span style={styles.wordmark}>DigiCoin</span>
-          </div>
-          <h1 style={styles.h1}>Farm coins for every friend</h1>
-          <p style={styles.subtitle}>
-            Refer friends and complete social tasks to earn DGC. Enter your name to get your referral code and start farming.
-          </p>
-          <form onSubmit={handleCreateProfile} style={{ display: "flex", gap: 10, marginTop: 22 }} className="dc-row">
-            <input
-              className="dc-input"
-              placeholder="Your name"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              autoFocus
-            />
-            <button className="dc-btn dc-btn-primary" type="submit" style={{ whiteSpace: "nowrap" }}>
-              Get my code
-            </button>
-          </form>
-        </div>
-      )}
-
-      {!loading && profile && (
+      {!showUpgradePlan && (
         <div>
           <div style={styles.brandRow}>
             <Coins size={22} color="#C99A3D" strokeWidth={2} />
             <span style={styles.wordmark}>DigiCoin</span>
-            <span style={styles.tagline}>{profile.name}'s wallet</span>
+            <span style={styles.tagline}>{user.name}'s wallet</span>
             <button
               className="dc-btn dc-btn-primary"
               onClick={() => setShowUpgradePlan(true)}
@@ -320,18 +244,18 @@ export default function DigiCoinApp() {
             </button>
             <button
               className="dc-btn dc-btn-ghost"
-              onClick={handleGoBack}
+              onClick={handleSignOut}
               style={{ display: "flex", alignItems: "center", gap: 6 }}
             >
-              <ArrowRight size={15} style={{ transform: "rotate(180deg)" }} />
-              Go back
+              <LogOut size={15} />
+              Sign out
             </button>
           </div>
 
           <div style={styles.card}>
             <p style={styles.eyebrow}>Your referral code</p>
             <div style={styles.codeRow} className="dc-row">
-              <div style={styles.codeBox}>{profile.code}</div>
+              <div style={styles.codeBox}>{referralCode}</div>
               <button className="dc-btn dc-btn-ghost" onClick={handleCopy} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {copied ? <Check size={15} /> : <Copy size={15} />}
                 {copied ? "Copied" : "Copy link"}
@@ -477,7 +401,7 @@ export default function DigiCoinApp() {
 
           {error && <p style={{ ...styles.hint, color: "#B5502F" }}>{error}</p>}
 
-          <div style={{ textAlign: "center", marginTop: 24 }}>
+          {/* <div style={{ textAlign: "center", marginTop: 24 }}>
             <button
               onClick={handleReset}
               style={{ background: "none", border: "none", color: "#8C8B99", fontSize: 13, fontFamily: "'Work Sans', sans-serif", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}
@@ -485,7 +409,7 @@ export default function DigiCoinApp() {
               <RotateCcw size={13} />
               {confirmReset ? "Click again to confirm reset" : "Reset demo data"}
             </button>
-          </div>
+          </div> */}
         </div>
       )}
     </div>

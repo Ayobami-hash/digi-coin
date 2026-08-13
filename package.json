@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "cd ./digicoin && npm run dev",
-    "backend": "cd ./backend && npm start",
-    "backend:dev": "cd ./backend && npm run dev",
+    "backend": "cd ./backend && php artisan serve",
+    "backend:dev": "cd ./backend && php artisan serve",
     "start": "npm run dev"
   }
 }
