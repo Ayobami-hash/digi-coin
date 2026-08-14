@@ -90,7 +90,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
   }
 
   try {
-    const email = `${userId}@digicoin.local`;
+   const email = `${userId}@digicoin.io`;
     const amount = Math.round((plan.activation || 0) * 100);
     const response = await fetch(`${PAYSTACK_BASE_URL}/transaction/initialize`, {
       method: "POST",
