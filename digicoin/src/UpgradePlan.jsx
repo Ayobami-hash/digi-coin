@@ -24,10 +24,10 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
     try {
       setLoading(true);
       const userId = profile?.id || profile?.code;
-      const url = new URL("/api/plans", window.location.origin);
+      const url = new URL("/api/plans", import.meta.env.VITE_API_URL);
       if (userId) url.searchParams.append("userId", userId);
-      
-      const response = await fetch(url.toString());
+
+      const response = await fetch(url.toString(), { credentials: "include" });
       if (!response.ok) throw new Error("Failed to fetch plans");
       const data = await response.json();
       setPlans(data.plans || []);
