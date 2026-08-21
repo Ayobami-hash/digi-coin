@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ChevronLeft, Star, Shield, Zap } from "lucide-react";
+import { api } from "./lib/api";
 
 const PLAN_ICONS = {
   novice: Star,
@@ -21,26 +22,19 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
   }, []);
 
   async function fetchPlans() {
-    try {
-      setLoading(true);
-      const userId = profile?.id || profile?.code;
-      const url = new URL("/api/plans", import.meta.env.VITE_API_URL);
-      if (userId) url.searchParams.append("userId", userId);
-
-      const response = await fetch(url.toString(), { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch plans");
-      const data = await response.json();
-      setPlans(data.plans || []);
-      const nextPlan = data.currentPlan || null;
-      setCurrentPlan(nextPlan);
-      onPlanChange?.(nextPlan, data.tasksLocked);
-    } catch (err) {
-      setError(err.message || "Could not load plans");
-      console.error("Error fetching plans:", err);
-    } finally {
-      setLoading(false);
-    }
+  try {
+    setLoading(true);
+    const { data } = await api.get("/api/plans");
+    setPlans(data.plans || []);
+    const nextPlan = data.currentPlan || null;
+    setCurrentPlan(nextPlan);
+    onPlanChange?.(nextPlan, data.tasksLocked);
+  } catch (err) {
+    setError(err.response?.data?.error || err.message || "Could not load plans");
+  } finally {
+    setLoading(false);
   }
+}
 
   function beginPayment(plan) {
     setSelectedPlan(plan);
@@ -49,37 +43,18 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
   }
 
   async function handlePayment() {
-    if (!selectedPlan) return;
-    try {
-      setPaymentProcessing(true);
-      const userId = profile?.id || profile?.code;
-      const response = await fetch("/api/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          planId: selectedPlan.id,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Could not start checkout");
-      }
-
-      const data = await response.json();
-      if (!data.url) {
-        throw new Error("Paystack did not return a checkout URL");
-      }
-
-      window.location.assign(data.url);
-    } catch (err) {
-      setError(err.message || "Could not complete payment");
-      console.error("Error starting Paystack checkout:", err);
-    } finally {
-      setPaymentProcessing(false);
-    }
+  if (!selectedPlan) return;
+  try {
+    setPaymentProcessing(true);
+    const { data } = await api.post("/api/create-checkout-session", { planId: selectedPlan.id });
+    if (!data.url) throw new Error("Paystack did not return a checkout URL");
+    window.location.assign(data.url);
+  } catch (err) {
+    setError(err.response?.data?.error || err.message || "Could not complete payment");
+  } finally {
+    setPaymentProcessing(false);
   }
+}
 
   return (
     <div style={styles.page}>
@@ -185,10 +160,10 @@ export default function UpgradePlan({ profile, onBack, onPlanChange }) {
                   )}
                 </div>
 
-                {plan.minimumWithdrawal && (
+                {plan.referralMinWithdrawal && (
                   <div style={styles.minimumBox}>
-                    <span style={styles.minimumLabel}>Minimum affiliate/referral withdrawal:</span>
-                    <span style={styles.minimumValue}>{typeof plan.minimumWithdrawal === "number" ? `₦${plan.minimumWithdrawal.toLocaleString()}` : plan.minimumWithdrawal}</span>
+                    <span style={styles.minimumLabel}>Minimum referral withdrawal:</span>
+                    <span style={styles.minimumValue}>{typeof plan.referralMinWithdrawal === "number" ? `₦${plan.referralMinWithdrawal.toLocaleString()}` : plan.referralMinWithdrawal}</span>
                   </div>
                 )}
 
