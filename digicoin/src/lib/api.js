@@ -5,7 +5,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 export const api = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
-  withXSRFToken: true, // <-- add this line
+  withXSRFToken: true, // send XSRF-TOKEN cookie as header even cross-origin
   headers: { "X-Requested-With": "XMLHttpRequest" },
 });
 
@@ -14,10 +14,11 @@ export async function ensureCsrfCookie() {
   await api.get("/sanctum/csrf-cookie");
 }
 
-export async function registerUser({ name, email, password, password_confirmation }) {
+export async function registerUser({ name, email, password, password_confirmation, referral_code }) {
   await ensureCsrfCookie();
   const { data } = await api.post("/api/auth/register", {
     name, email, password, password_confirmation,
+    referral_code: referral_code || undefined, // omit entirely if blank
   });
   return data.user;
 }

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Coins, Mail, Lock, User as UserIcon } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Coins, Mail, Lock, User as UserIcon, Gift } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { googleLoginUrl } from "../lib/api";
 
@@ -7,7 +7,21 @@ export default function AuthPage() {
   const { login, register, error, setError } = useAuth();
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: "", password_confirmation: "" });
+  const [form, setForm] = useState({
+    name: "", email: "", password: "", password_confirmation: "", referral_code: "",
+  });
+
+  // If the link has ?ref=<id>, prefill it and jump straight to the
+  // register tab — someone arriving via a referral link almost
+  // certainly wants to sign up, not log in.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
+    if (ref) {
+      setForm((f) => ({ ...f, referral_code: ref }));
+      setMode("register");
+    }
+  }, []);
 
   function update(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -80,6 +94,13 @@ export default function AuthPage() {
           {mode === "login" ? "Sign in to keep farming your referrals." : "Set up your wallet in a few seconds."}
         </p>
 
+        {mode === "register" && form.referral_code && (
+          <div style={styles.referralBanner}>
+            <Gift size={15} color="#33346B" />
+            <span>You were invited by referral code <strong>{form.referral_code}</strong></span>
+          </div>
+        )}
+
         <button
           type="button"
           className="dc-btn dc-btn-ghost"
@@ -112,10 +133,21 @@ export default function AuthPage() {
             <input className="dc-input" type="password" placeholder="Password" value={form.password} onChange={update("password")} required />
           </div>
           {mode === "register" && (
-            <div className="dc-field">
-              <Lock size={16} />
-              <input className="dc-input" type="password" placeholder="Confirm password" value={form.password_confirmation} onChange={update("password_confirmation")} required />
-            </div>
+            <>
+              <div className="dc-field">
+                <Lock size={16} />
+                <input className="dc-input" type="password" placeholder="Confirm password" value={form.password_confirmation} onChange={update("password_confirmation")} required />
+              </div>
+              <div className="dc-field">
+                <Gift size={16} />
+                <input
+                  className="dc-input"
+                  placeholder="Referral code (optional)"
+                  value={form.referral_code}
+                  onChange={update("referral_code")}
+                />
+              </div>
+            </>
           )}
 
           {error && <p style={styles.errorText}>{error}</p>}
@@ -163,6 +195,11 @@ const styles = {
   wordmark: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 19, letterSpacing: "-0.01em" },
   h1: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 24, margin: "6px 0 6px", lineHeight: 1.2 },
   subtitle: { fontSize: 14, color: "#63627A", margin: 0, lineHeight: 1.5 },
+  referralBanner: {
+    display: "flex", alignItems: "center", gap: 8, background: "#E6E5F0",
+    border: "1px solid #DEDDE8", borderRadius: 8, padding: "10px 12px",
+    fontSize: 13, color: "#33346B", marginTop: 14,
+  },
   dividerRow: { display: "flex", alignItems: "center", gap: 10, margin: "18px 0 14px" },
   dividerLine: { flex: 1, height: 1, background: "#DEDDE8" },
   dividerText: { fontSize: 12, color: "#8C8B99" },

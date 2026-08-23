@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Referral;
 use App\Models\User;
+use App\Support\Plans;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -18,6 +20,8 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::min(8)],
+            // Referral code is just the referrer's user ID for now — optional.
+            'referral_code' => ['nullable', 'integer', 'exists:users,id'],
         ]);
 
         $user = User::create([
@@ -25,6 +29,23 @@ class AuthController extends Controller
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
         ]);
+
+        // If a valid referral code was supplied, credit the referrer —
+        // only if the referrer has an active plan (referral bonuses are
+        // plan-dependent, same rule as manually recorded referrals).
+        if (!empty($data['referral_code'])) {
+            $referrer = User::find($data['referral_code']);
+            if ($referrer) {
+                $plan = Plans::find($referrer->current_plan);
+                if ($plan) {
+                    Referral::create([
+                        'referrer_id' => $referrer->id,
+                        'referred_name' => $user->name,
+                        'bonus_amount' => $plan['referralBonus'],
+                    ]);
+                }
+            }
+        }
 
         Auth::login($user);
         $request->session()->regenerate();
@@ -61,15 +82,15 @@ class AuthController extends Controller
     }
 
     // POST /api/auth/logout
-public function logout(Request $request)
-{
-    Auth::guard('web')->logout();
+    public function logout(Request $request)
+    {
+        Auth::guard('web')->logout();
 
-    $request->session()->invalidate();
-    $request->session()->regenerateToken();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
-    return response()->json(['message' => 'Logged out']);
-}
+        return response()->json(['message' => 'Logged out']);
+    }
 
     // GET /api/auth/me
     public function me(Request $request)

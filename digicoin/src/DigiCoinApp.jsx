@@ -139,14 +139,15 @@ export default function DigiCoinApp() {
     await logout();
   }
 
-  function handleCopy() {
-    if (!user) return;
-    const code = user.referral_code || user.id; // fallback until referral_code column exists
-    const link = `digicoin.app/join?ref=${code}`;
-    navigator.clipboard?.writeText(link).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  }
+
+function handleCopy() {
+  if (!user) return;
+  const code = user.referral_code || user.id; // fallback until referral_code column exists
+  const link = `${window.location.origin}/?ref=${code}`;
+  navigator.clipboard?.writeText(link).catch(() => {});
+  setCopied(true);
+  setTimeout(() => setCopied(false), 1800);
+}
 
   const balance = monthTaskTotal + referralTotal;
   const upcoming = nextTier(referralCount);
