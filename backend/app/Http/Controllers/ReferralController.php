@@ -9,6 +9,18 @@ use Illuminate\Http\Request;
 
 class ReferralController extends Controller
 {
+    // GET /api/referrals — list this user's referral history
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        $referrals = Referral::where('referrer_id', $user->id)
+            ->orderByDesc('created_at')
+            ->get(['id', 'referred_name', 'bonus_amount', 'created_at']);
+
+        return response()->json(['referrals' => $referrals]);
+    }
+
     // GET /api/referrals/status
     public function status(Request $request)
     {
@@ -34,6 +46,8 @@ class ReferralController extends Controller
     }
 
     // POST /api/referrals  { referred_name }
+    // Kept for manual/admin use — real referrals now happen automatically
+    // via the referral_code field at signup (see AuthController::register).
     public function store(Request $request)
     {
         $user = $request->user();

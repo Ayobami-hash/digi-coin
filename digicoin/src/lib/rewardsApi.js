@@ -31,3 +31,9 @@ export async function withdrawReferralEarnings({ amount, bank_name, bank_account
   const { data } = await api.post("/api/referrals/withdraw", { amount, bank_name, bank_account_number });
   return data;
 }
+
+export async function fetchReferralList() {
+  const { data } = await api.get("/api/referrals");
+  return data.referrals;
+}
+ 

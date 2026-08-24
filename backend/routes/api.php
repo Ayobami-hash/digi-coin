@@ -36,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tasks/withdraw', [TaskController::class, 'withdraw']);
 
     Route::get('/referrals/status', [ReferralController::class, 'status']);
+    Route::get('/referrals', [ReferralController::class, 'index']);
     Route::post('/referrals', [ReferralController::class, 'store']);
     Route::post('/referrals/withdraw', [ReferralController::class, 'withdraw']);
 });

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Coins, Copy, Check, UserPlus, Wallet, ArrowRight, Sparkles, TrendingUp, LogOut } from "lucide-react";
+import { Coins, Copy, Check, UserPlus, Wallet, Sparkles, TrendingUp, LogOut } from "lucide-react";
 import UpgradePlan from "./UpgradePlan";
 import { useAuth } from "./context/AuthContext";
 import TaskRewardBox from "./components/TaskRewardBox";
-import ReferralRewardBox from "./components/ReferralRewardBox"
-import { fetchTaskStatus, fetchReferralStatus, addReferral } from "./lib/rewardsApi"
+import ReferralRewardBox from "./components/ReferralRewardBox";
+import ReferralListSection from "./components/ReferralListSection";
+import { fetchTaskStatus, fetchReferralStatus } from "./lib/rewardsApi";
 
 const TIERS = [
   { threshold: 1, reward: 50, label: "First referral" },
@@ -21,8 +22,6 @@ export default function DigiCoinApp() {
   // `user` is the authenticated Laravel user (from Sanctum session).
   const { user, logout } = useAuth();
 
-  const [friendInput, setFriendInput] = useState("");
-  const [referralSubmitting, setReferralSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [showUpgradePlan, setShowUpgradePlan] = useState(false);
@@ -30,15 +29,11 @@ export default function DigiCoinApp() {
   const [tasksLocked, setTasksLocked] = useState(true);
 
   // Lightweight summary numbers for the header stats row — the
-  // TaskRewardBox/ReferralRewardBox components below fetch their own
-  // detailed status independently.
+  // TaskRewardBox/ReferralRewardBox/ReferralListSection components below
+  // fetch their own detailed data independently.
   const [monthTaskTotal, setMonthTaskTotal] = useState(0);
   const [referralCount, setReferralCount] = useState(0);
   const [referralTotal, setReferralTotal] = useState(0);
-
-  // Bumping this remounts ReferralRewardBox so it refetches after a new
-  // referral is recorded from the form below.
-  const [referralRefreshKey, setReferralRefreshKey] = useState(0);
 
   async function loadSummary() {
     try {
@@ -116,38 +111,18 @@ export default function DigiCoinApp() {
     confirmCheckout();
   }, []);
 
-  async function handleAddReferral(e) {
-    e.preventDefault();
-    const friend = friendInput.trim();
-    if (!friend) return;
-
-    setReferralSubmitting(true);
-    setError("");
-    try {
-      await addReferral(friend);
-      setFriendInput("");
-      setReferralRefreshKey((k) => k + 1); // remount ReferralRewardBox to refetch
-      loadSummary(); // refresh header stats too
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not record referral");
-    } finally {
-      setReferralSubmitting(false);
-    }
-  }
-
   async function handleSignOut() {
     await logout();
   }
 
-
-function handleCopy() {
-  if (!user) return;
-  const code = user.referral_code || user.id; // fallback until referral_code column exists
-  const link = `${window.location.origin}/?ref=${code}`;
-  navigator.clipboard?.writeText(link).catch(() => {});
-  setCopied(true);
-  setTimeout(() => setCopied(false), 1800);
-}
+  function handleCopy() {
+    if (!user) return;
+    const code = user.referral_code || user.id; // fallback until referral_code column exists
+    const link = `${window.location.origin}/?ref=${code}`;
+    navigator.clipboard?.writeText(link).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
 
   const balance = monthTaskTotal + referralTotal;
   const upcoming = nextTier(referralCount);
@@ -176,20 +151,6 @@ function handleCopy() {
         .dc-btn-primary:hover { opacity: 0.92; }
         .dc-btn-ghost { background: transparent; color: #33346B; border: 1.5px solid #33346B; }
         .dc-btn-ghost:hover { background: rgba(51,52,107,0.07); }
-        .dc-input {
-          font-family: 'Work Sans', sans-serif;
-          font-size: 15px;
-          padding: 11px 14px;
-          border-radius: 8px;
-          border: 1.5px solid #D3D3DE;
-          background: #F7F7FB;
-          color: #1C1B1F;
-          width: 100%;
-          outline: none;
-          transition: border-color 0.12s ease;
-        }
-        .dc-input:focus { border-color: #33346B; }
-        .dc-input::placeholder { color: #8C8B99; }
         @media (max-width: 560px) {
           .dc-row { flex-direction: column !important; align-items: stretch !important; }
           .dc-track { flex-wrap: wrap !important; row-gap: 28px !important; }
@@ -241,7 +202,7 @@ function handleCopy() {
                 {copied ? "Copied" : "Copy link"}
               </button>
             </div>
-            <p style={styles.hint}>Friends who join with your link start with a 50 DGC bonus.</p>
+            <p style={styles.hint}>Friends who join with your link earn you a referral bonus automatically.</p>
           </div>
 
           <div style={styles.statsGrid}>
@@ -262,31 +223,10 @@ function handleCopy() {
             </div>
           </div>
 
-
           {/* Real backend-driven reward boxes */}
           <TaskRewardBox />
-          <ReferralRewardBox key={referralRefreshKey} />
-
-          <div style={styles.card}>
-            <p style={styles.eyebrow}>Record a referral</p>
-            <p style={styles.hint}>Enter a friend's name to log them as a referral and earn your plan's referral bonus.</p>
-            <form onSubmit={handleAddReferral} style={{ display: "flex", gap: 10, marginTop: 12 }} className="dc-row">
-              <input
-                className="dc-input"
-                placeholder="Friend's name"
-                value={friendInput}
-                onChange={(e) => setFriendInput(e.target.value)}
-              />
-              <button
-                className="dc-btn dc-btn-primary"
-                type="submit"
-                disabled={referralSubmitting}
-                style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
-              >
-                {referralSubmitting ? "Adding…" : "Add referral"} <ArrowRight size={15} />
-              </button>
-            </form>
-          </div>
+          <ReferralRewardBox />
+          <ReferralListSection />
 
           {error && <p style={{ ...styles.hint, color: "#B5502F" }}>{error}</p>}
         </div>
