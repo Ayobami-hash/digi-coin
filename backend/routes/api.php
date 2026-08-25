@@ -8,6 +8,7 @@ use App\Http\Controllers\PlanController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\ReferralController;
+use App\Http\Controllers\Admin\AdminTaskController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -32,8 +33,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/confirm-checkout', [PaymentController::class, 'confirmCheckout']);
 
     Route::get('/tasks/status', [TaskController::class, 'status']);
-    Route::post('/tasks/complete', [TaskController::class, 'complete']);
+    Route::post('/tasks/submit', [TaskController::class, 'submit']);
     Route::post('/tasks/withdraw', [TaskController::class, 'withdraw']);
+
+    // Admin-only routes
+    Route::middleware('admin')->prefix('admin')->group(function () {
+        Route::get('/tasks', [AdminTaskController::class, 'indexTasks']);
+        Route::post('/tasks', [AdminTaskController::class, 'storeTask']);
+        Route::patch('/tasks/{task}', [AdminTaskController::class, 'updateTask']);
+        Route::delete('/tasks/{task}', [AdminTaskController::class, 'destroyTask']);
+
+        Route::get('/task-submissions', [AdminTaskController::class, 'indexSubmissions']);
+        Route::post('/task-submissions/{submission}/approve', [AdminTaskController::class, 'approve']);
+        Route::post('/task-submissions/{submission}/reject', [AdminTaskController::class, 'reject']);
+    });
 
     Route::get('/referrals/status', [ReferralController::class, 'status']);
     Route::get('/referrals', [ReferralController::class, 'index']);

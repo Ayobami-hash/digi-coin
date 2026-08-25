@@ -2,30 +2,55 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\TaskCompletion;
+use App\Models\DailyTask;
+use App\Models\Task;
+use App\Models\TaskSubmission;
 use App\Models\Withdrawal;
 use App\Support\Plans;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class TaskController extends Controller
 {
+    // Ensures today has an assigned task even if the scheduler hasn't run
+    // yet (useful in local dev without `schedule:work` running).
+    private function todaysDailyTask(): ?DailyTask
+    {
+        $today = Carbon::today();
+        $dailyTask = DailyTask::with('task')->whereDate('assignment_date', $today)->first();
+
+        if ($dailyTask) {
+            return $dailyTask;
+        }
+
+        $task = Task::where('is_active', true)->inRandomOrder()->first();
+        if (!$task) {
+            return null; // pool is empty
+        }
+
+        return DailyTask::create(['task_id' => $task->id, 'assignment_date' => $today])->load('task');
+    }
+
     // GET /api/tasks/status
     public function status(Request $request)
     {
         $user = $request->user();
+        $plan = Plans::find($user->current_plan);
         $today = Carbon::today();
 
-        $plan = Plans::find($user->current_plan);
+        $dailyTask = $this->todaysDailyTask();
 
-        $monthTotal = TaskCompletion::where('user_id', $user->id)
-            ->whereYear('completion_date', $today->year)
-            ->whereMonth('completion_date', $today->month)
-            ->sum('amount');
+        $submission = $dailyTask
+            ? TaskSubmission::where('user_id', $user->id)->where('daily_task_id', $dailyTask->id)->first()
+            : null;
 
-        $todayCompleted = TaskCompletion::where('user_id', $user->id)
-            ->whereDate('completion_date', $today)
-            ->exists();
+        $monthTotal = TaskSubmission::where('task_submissions.user_id', $user->id)
+            ->where('task_submissions.status', 'approved')
+            ->whereYear('task_submissions.created_at', $today->year)
+            ->whereMonth('task_submissions.created_at', $today->month)
+            ->join('tasks', 'task_submissions.task_id', '=', 'tasks.id')
+            ->sum('tasks.reward_amount');
 
         $daysInMonth = $today->daysInMonth;
         $daysLeft = $daysInMonth - $today->day;
@@ -38,7 +63,19 @@ class TaskController extends Controller
 
         return response()->json([
             'plan' => $plan,
-            'todayCompleted' => $todayCompleted,
+            'task' => $dailyTask ? [
+                'id' => $dailyTask->task->id,
+                'title' => $dailyTask->task->title,
+                'description' => $dailyTask->task->description,
+                'link' => $dailyTask->task->link,
+                'reward_amount' => (float) $dailyTask->task->reward_amount,
+            ] : null,
+            'submission' => $submission ? [
+                'status' => $submission->status,
+                'admin_note' => $submission->admin_note,
+                'proof_url' => Storage::disk('public')->url($submission->proof_path),
+                'submitted_at' => $submission->created_at,
+            ] : null,
             'monthTotal' => (float) $monthTotal,
             'daysLeftInMonth' => $daysLeft,
             'withdrawUnlocked' => $isPayDay && !is_null($plan),
@@ -46,38 +83,58 @@ class TaskController extends Controller
         ]);
     }
 
-    // POST /api/tasks/complete
-    public function complete(Request $request)
+    // POST /api/tasks/submit   multipart: proof (file)
+    public function submit(Request $request)
     {
         $user = $request->user();
         $plan = Plans::find($user->current_plan);
 
         if (!$plan) {
-            return response()->json(['message' => 'You need an active plan to complete tasks.'], 422);
+            return response()->json(['message' => 'You need an active plan to submit tasks.'], 422);
         }
 
-        $today = Carbon::today();
-        $already = TaskCompletion::where('user_id', $user->id)
-            ->whereDate('completion_date', $today)
-            ->exists();
-
-        if ($already) {
-            return response()->json(['message' => 'Task already completed today.'], 422);
+        $dailyTask = $this->todaysDailyTask();
+        if (!$dailyTask) {
+            return response()->json(['message' => 'No task is available today.'], 422);
         }
 
-        TaskCompletion::create([
-            'user_id' => $user->id,
-            'completion_date' => $today,
-            'amount' => $plan['dailyEarnings'],
+        $request->validate([
+            'proof' => ['required', 'file', 'image', 'max:5120'], // 5MB
         ]);
+
+        $existing = TaskSubmission::where('user_id', $user->id)
+            ->where('daily_task_id', $dailyTask->id)
+            ->first();
+
+        // Block resubmission unless the previous one was rejected.
+        if ($existing && $existing->status !== 'rejected') {
+            return response()->json(['message' => 'You already submitted proof for today\'s task.'], 422);
+        }
+
+        $path = $request->file('proof')->store('task-proofs', 'public');
+
+        if ($existing) {
+            $existing->update([
+                'proof_path' => $path,
+                'status' => 'pending',
+                'admin_note' => null,
+                'reviewed_at' => null,
+                'reviewed_by' => null,
+            ]);
+        } else {
+            TaskSubmission::create([
+                'user_id' => $user->id,
+                'daily_task_id' => $dailyTask->id,
+                'task_id' => $dailyTask->task_id,
+                'proof_path' => $path,
+                'status' => 'pending',
+            ]);
+        }
 
         return $this->status($request);
     }
 
     // POST /api/tasks/withdraw
-    // Gated only by pay-day (last day of month) + sufficient balance —
-    // the spec doesn't define a minimum withdrawal for task earnings,
-    // only for referral earnings.
     public function withdraw(Request $request)
     {
         $user = $request->user();
@@ -98,13 +155,15 @@ class TaskController extends Controller
             'bank_account_number' => ['required', 'string', 'max:50'],
         ]);
 
-        $monthTotal = TaskCompletion::where('user_id', $user->id)
-            ->whereYear('completion_date', $today->year)
-            ->whereMonth('completion_date', $today->month)
-            ->sum('amount');
+        $monthTotal = TaskSubmission::where('task_submissions.user_id', $user->id)
+            ->where('task_submissions.status', 'approved')
+            ->whereYear('task_submissions.created_at', $today->year)
+            ->whereMonth('task_submissions.created_at', $today->month)
+            ->join('tasks', 'task_submissions.task_id', '=', 'tasks.id')
+            ->sum('tasks.reward_amount');
 
         if ($data['amount'] > $monthTotal) {
-            return response()->json(['message' => 'Withdrawal amount exceeds your available task earnings.'], 422);
+            return response()->json(['message' => 'Withdrawal amount exceeds your approved task earnings.'], 422);
         }
 
         $withdrawal = Withdrawal::create([
