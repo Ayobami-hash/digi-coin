@@ -7,11 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 class TaskSubmission extends Model
 {
     protected $fillable = [
-        'user_id', 'daily_task_id', 'task_id', 'proof_path',
+        'user_id', 'daily_task_id', 'task_id', 'reward_amount', 'proof_path',
         'status', 'admin_note', 'reviewed_at', 'reviewed_by',
     ];
 
     protected $casts = [
+        'reward_amount' => 'decimal:2',
         'reviewed_at' => 'datetime',
     ];
 

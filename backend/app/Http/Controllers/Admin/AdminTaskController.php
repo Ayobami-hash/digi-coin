@@ -24,7 +24,6 @@ class AdminTaskController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'link' => ['nullable', 'url', 'max:500'],
-            'reward_amount' => ['required', 'numeric', 'min:0'],
         ]);
 
         $task = Task::create($data + ['is_active' => true]);
@@ -39,7 +38,6 @@ class AdminTaskController extends Controller
             'title' => ['sometimes', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
             'link' => ['sometimes', 'nullable', 'url', 'max:500'],
-            'reward_amount' => ['sometimes', 'numeric', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -51,11 +49,6 @@ class AdminTaskController extends Controller
     // DELETE /api/admin/tasks/{task}
     public function destroyTask(Task $task)
     {
-        // Deleting would cascade-delete daily_tasks and task_submissions
-        // tied to this task — including approved submissions that already
-        // count toward someone's earnings. Block that; deactivating
-        // (is_active = false) is the safe way to retire a task that's
-        // been used.
         $hasHistory = DailyTask::where('task_id', $task->id)->exists()
             || TaskSubmission::where('task_id', $task->id)->exists();
 
@@ -75,7 +68,7 @@ class AdminTaskController extends Controller
     {
         $status = $request->query('status', 'pending');
 
-        $submissions = TaskSubmission::with(['user:id,name,email', 'task:id,title,reward_amount'])
+        $submissions = TaskSubmission::with(['user:id,name,email', 'task:id,title'])
             ->when($status !== 'all', fn ($q) => $q->where('status', $status))
             ->orderBy('created_at')
             ->get()
@@ -83,6 +76,7 @@ class AdminTaskController extends Controller
                 'id' => $s->id,
                 'user' => $s->user,
                 'task' => $s->task,
+                'reward_amount' => (float) $s->reward_amount, // captured at submission time
                 'status' => $s->status,
                 'admin_note' => $s->admin_note,
                 'proof_url' => Storage::disk('public')->url($s->proof_path),

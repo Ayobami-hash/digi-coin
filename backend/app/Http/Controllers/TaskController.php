@@ -45,12 +45,13 @@ class TaskController extends Controller
             ? TaskSubmission::where('user_id', $user->id)->where('daily_task_id', $dailyTask->id)->first()
             : null;
 
-        $monthTotal = TaskSubmission::where('task_submissions.user_id', $user->id)
-            ->where('task_submissions.status', 'approved')
-            ->whereYear('task_submissions.created_at', $today->year)
-            ->whereMonth('task_submissions.created_at', $today->month)
-            ->join('tasks', 'task_submissions.task_id', '=', 'tasks.id')
-            ->sum('tasks.reward_amount');
+        // No join needed anymore — reward_amount lives directly on
+        // task_submissions, captured at submission time.
+        $monthTotal = TaskSubmission::where('user_id', $user->id)
+            ->where('status', 'approved')
+            ->whereYear('created_at', $today->year)
+            ->whereMonth('created_at', $today->month)
+            ->sum('reward_amount');
 
         $daysInMonth = $today->daysInMonth;
         $daysLeft = $daysInMonth - $today->day;
@@ -68,11 +69,15 @@ class TaskController extends Controller
                 'title' => $dailyTask->task->title,
                 'description' => $dailyTask->task->description,
                 'link' => $dailyTask->task->link,
-                'reward_amount' => (float) $dailyTask->task->reward_amount,
+                // Informational only — what you'd earn if you submit right
+                // now, based on your current plan. The actual amount is
+                // locked in on the submission itself at submit time.
+                'reward_amount' => $plan ? (float) $plan['dailyEarnings'] : null,
             ] : null,
             'submission' => $submission ? [
                 'status' => $submission->status,
                 'admin_note' => $submission->admin_note,
+                'reward_amount' => (float) $submission->reward_amount,
                 'proof_url' => Storage::disk('public')->url($submission->proof_path),
                 'submitted_at' => $submission->created_at,
             ] : null,
@@ -113,9 +118,15 @@ class TaskController extends Controller
 
         $path = $request->file('proof')->store('task-proofs', 'public');
 
+        // Reward is captured NOW, from the user's current plan — this is
+        // what actually gets credited on approval, regardless of any
+        // later plan changes.
+        $rewardAmount = $plan['dailyEarnings'];
+
         if ($existing) {
             $existing->update([
                 'proof_path' => $path,
+                'reward_amount' => $rewardAmount,
                 'status' => 'pending',
                 'admin_note' => null,
                 'reviewed_at' => null,
@@ -126,6 +137,7 @@ class TaskController extends Controller
                 'user_id' => $user->id,
                 'daily_task_id' => $dailyTask->id,
                 'task_id' => $dailyTask->task_id,
+                'reward_amount' => $rewardAmount,
                 'proof_path' => $path,
                 'status' => 'pending',
             ]);
@@ -155,12 +167,11 @@ class TaskController extends Controller
             'bank_account_number' => ['required', 'string', 'max:50'],
         ]);
 
-        $monthTotal = TaskSubmission::where('task_submissions.user_id', $user->id)
-            ->where('task_submissions.status', 'approved')
-            ->whereYear('task_submissions.created_at', $today->year)
-            ->whereMonth('task_submissions.created_at', $today->month)
-            ->join('tasks', 'task_submissions.task_id', '=', 'tasks.id')
-            ->sum('tasks.reward_amount');
+        $monthTotal = TaskSubmission::where('user_id', $user->id)
+            ->where('status', 'approved')
+            ->whereYear('created_at', $today->year)
+            ->whereMonth('created_at', $today->month)
+            ->sum('reward_amount');
 
         if ($data['amount'] > $monthTotal) {
             return response()->json(['message' => 'Withdrawal amount exceeds your approved task earnings.'], 422);

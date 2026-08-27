@@ -143,7 +143,7 @@ function SubmissionsPanel({ onImageClick }) {
               />
               <div style={styles.subBody}>
                 <p style={styles.subUser}>{s.user.name} <span style={styles.subEmail}>({s.user.email})</span></p>
-                <p style={styles.subTask}>{s.task.title} — ₦{Number(s.task.reward_amount).toLocaleString()}</p>
+                <p style={styles.subTask}>{s.task.title} — ₦{Number(s.reward_amount).toLocaleString()}</p>
                 <p style={styles.subDate}>{new Date(s.submitted_at).toLocaleString()}</p>
 
                 {rejectingId === s.id ? (
@@ -196,7 +196,7 @@ function TaskPoolPanel() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", link: "", reward_amount: "" });
+  const [form, setForm] = useState({ title: "", description: "", link: "" });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -222,8 +222,8 @@ function TaskPoolPanel() {
     setSaving(true);
     setFormError("");
     try {
-      await createAdminTask({ ...form, reward_amount: Number(form.reward_amount) });
-      setForm({ title: "", description: "", link: "", reward_amount: "" });
+      await createAdminTask(form);
+      setForm({ title: "", description: "", link: "" });
       setShowForm(false);
       load();
     } catch (e) {
@@ -244,7 +244,6 @@ function TaskPoolPanel() {
       title: task.title,
       description: task.description || "",
       link: task.link || "",
-      reward_amount: task.reward_amount,
     });
   }
 
@@ -252,7 +251,7 @@ function TaskPoolPanel() {
     setBusyId(taskId);
     setRowError((prev) => ({ ...prev, [taskId]: "" }));
     try {
-      await updateAdminTask(taskId, { ...editForm, reward_amount: Number(editForm.reward_amount) });
+      await updateAdminTask(taskId, editForm);
       setEditingId(null);
       load();
     } catch (e) {
@@ -278,6 +277,10 @@ function TaskPoolPanel() {
 
   return (
     <div>
+      <p style={styles.poolHint}>
+        Reward amount is no longer set per task — it's based on each user's active plan (daily earnings) at the time they submit.
+      </p>
+
       <button
         className="dc-btn"
         onClick={() => { setShowForm((v) => !v); setFormError(""); }}
@@ -290,8 +293,7 @@ function TaskPoolPanel() {
         <form onSubmit={handleCreate} style={styles.form}>
           <input className="dc-input" placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required style={{ marginBottom: 8 }} />
           <textarea className="dc-input" placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} style={{ marginBottom: 8, resize: "vertical" }} />
-          <input className="dc-input" placeholder="Link (optional)" value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} style={{ marginBottom: 8 }} />
-          <input className="dc-input" type="number" placeholder="Reward amount (₦)" value={form.reward_amount} onChange={(e) => setForm({ ...form, reward_amount: e.target.value })} required style={{ marginBottom: 12 }} />
+          <input className="dc-input" placeholder="Link (optional)" value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} style={{ marginBottom: 12 }} />
           {formError && <p style={styles.error}>{formError}</p>}
           <button className="dc-btn" type="submit" disabled={saving} style={{ background: "#33346B", color: "#fff", width: "100%" }}>
             {saving ? "Saving…" : "Create task"}
@@ -312,7 +314,6 @@ function TaskPoolPanel() {
                   <input className="dc-input" placeholder="Title" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} style={{ marginBottom: 8 }} />
                   <textarea className="dc-input" placeholder="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={2} style={{ marginBottom: 8, resize: "vertical" }} />
                   <input className="dc-input" placeholder="Link" value={editForm.link} onChange={(e) => setEditForm({ ...editForm, link: e.target.value })} style={{ marginBottom: 8 }} />
-                  <input className="dc-input" type="number" placeholder="Reward amount (₦)" value={editForm.reward_amount} onChange={(e) => setEditForm({ ...editForm, reward_amount: e.target.value })} style={{ marginBottom: 8 }} />
                   {rowError[t.id] && <p style={styles.error}>{rowError[t.id]}</p>}
                   <div style={{ display: "flex", gap: 8 }}>
                     <button className="dc-btn" onClick={() => handleSaveEdit(t.id)} disabled={busyId === t.id} style={{ background: "#2E9E5B", color: "#fff", flex: 1 }}>
@@ -326,7 +327,7 @@ function TaskPoolPanel() {
               ) : (
                 <>
                   <div style={{ flex: 1 }}>
-                    <p style={styles.subTask}>{t.title} — ₦{Number(t.reward_amount).toLocaleString()}</p>
+                    <p style={styles.subTask}>{t.title}</p>
                     {t.description && <p style={styles.subDate}>{t.description}</p>}
                     {rowError[t.id] && <p style={styles.error}>{rowError[t.id]}</p>}
                   </div>
@@ -373,6 +374,7 @@ const styles = {
   tabBtn: { fontFamily: "'Work Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: "8px 14px", borderRadius: 8, border: "1px solid #DEDDE8", background: "#F7F7FB", color: "#63627A", cursor: "pointer" },
   tabBtnActive: { background: "#33346B", color: "#F3F2FA", border: "1px solid #33346B" },
   hint: { fontSize: 13, color: "#63627A" },
+  poolHint: { fontSize: 12, color: "#8C8B99", marginBottom: 14, lineHeight: 1.5 },
   error: { fontSize: 13, color: "#B5502F", marginTop: 6, marginBottom: 8 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 },
   subCard: { background: "#F7F7FB", border: "1px solid #DEDDE8", borderRadius: 12, overflow: "hidden" },
