@@ -1,7 +1,7 @@
 // DigiCoin Root Environment Configuration
 
 // Frontend
-const FRONTEND_URL = 'http://localhost:5174';
+const FRONTEND_URL = 'http://localhost:5173';
 
 // Backend
 const BACKEND_URL = 'http://localhost:3001';
