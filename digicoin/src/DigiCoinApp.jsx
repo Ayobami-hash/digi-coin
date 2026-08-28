@@ -131,10 +131,32 @@ export default function DigiCoinApp() {
   if (!user) return null; // Gate in App.jsx already handles unauthenticated state
 
   return (
-    <div style={styles.page}>
+    <div className="dc-page" style={styles.page}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
         * { box-sizing: border-box; }
+        @keyframes dc-gradient-shift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+       .dc-page {
+  max-width: 720px;   /* ← changed from 960px */
+  margin: 0 auto;
+  padding: 32px 20px 40px;
+  min-height: 100%;
+}
+        @media (max-width: 768px) {
+          .dc-page {
+            max-width: 100%;
+            padding: 24px 16px 32px;
+          }
+        }
+        @media (max-width: 480px) {
+          .dc-page {
+            padding: 16px 12px 24px;
+          }
+        }
         .dc-btn {
           font-family: 'Work Sans', sans-serif;
           font-weight: 600;
@@ -154,6 +176,7 @@ export default function DigiCoinApp() {
         @media (max-width: 560px) {
           .dc-row { flex-direction: column !important; align-items: stretch !important; }
           .dc-track { flex-wrap: wrap !important; row-gap: 28px !important; }
+          .dc-stats-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -205,7 +228,7 @@ export default function DigiCoinApp() {
             <p style={styles.hint}>Friends who join with your link earn you a referral bonus automatically.</p>
           </div>
 
-          <div style={styles.statsGrid}>
+          <div style={styles.statsGrid} className="dc-stats-grid">
             <div style={styles.statCard}>
               <Wallet size={17} color="#33346B" />
               <div style={styles.statNum}>₦{balance.toLocaleString()}</div>
@@ -238,22 +261,21 @@ export default function DigiCoinApp() {
 const styles = {
   page: {
     fontFamily: "'Work Sans', sans-serif",
-    background: "#EDEEF2",
+    background: "linear-gradient(120deg, #3FBFA8, #2E9C8F, #1F7A6C, #145E52, #226E64, #33346B, #2E9C8F)",
+    backgroundSize: "300% 300%",
+    animation: "dc-gradient-shift 12s ease infinite",
     color: "#1C1B1F",
-    padding: "32px 20px 40px",
-    maxWidth: 640,
-    margin: "0 auto",
-    minHeight: "100%",
-  },
+},
   brandRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" },
   wordmark: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 19, letterSpacing: "-0.01em" },
   tagline: { fontSize: 13, color: "#63627A", marginLeft: 4 },
   card: {
-    background: "#F7F7FB",
-    border: "1px solid #DEDDE8",
+    background: "#F0F5F1",
+    border: "1px solid rgba(73, 197, 182, 0.5)",
     borderRadius: 14,
     padding: "22px 24px",
     marginBottom: 16,
+    boxShadow: "0 0 0 1px rgba(73, 197, 182, 0.15), 0 0 18px rgba(73, 197, 182, 0.35), 0 0 40px rgba(73, 197, 182, 0.15)",
   },
   eyebrow: {
     fontFamily: "'IBM Plex Mono', monospace",
@@ -278,10 +300,11 @@ const styles = {
   hint: { fontSize: 13, color: "#63627A", marginTop: 10, marginBottom: 0, lineHeight: 1.5 },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 },
   statCard: {
-    background: "#F7F7FB",
-    border: "1px solid #DEDDE8",
+    background: "#F0F5F1",
+    border: "1px solid rgba(73, 197, 182, 0.5)",
     borderRadius: 12,
     padding: "16px 14px",
+    boxShadow: "0 0 0 1px rgba(73, 197, 182, 0.15), 0 0 14px rgba(73, 197, 182, 0.3), 0 0 30px rgba(73, 197, 182, 0.12)",
   },
   statNum: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 600, margin: "8px 0 2px" },
   statLabel: { fontSize: 12, color: "#63627A" },

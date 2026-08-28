@@ -1,9 +1,14 @@
+@keyframes dc-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 :root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #1C1B1F;
-  background-color: #EDEEF2;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -14,9 +19,10 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #EDEEF2;
+  background: linear-gradient(120deg, #3FBFA8, #2E9C8F, #1F7A6C, #145E52, #226E64, #33346B, #2E9C8F);
+  background-size: 300% 300%;
+  animation: dc-gradient-shift 12s ease infinite;
 }
-
 #root {
   min-height: 100vh;
 }

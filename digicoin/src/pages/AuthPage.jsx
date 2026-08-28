@@ -49,6 +49,11 @@ export default function AuthPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap');
         * { box-sizing: border-box; }
+        @keyframes dc-gradient-shift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
         .dc-btn {
           font-family: 'Work Sans', sans-serif;
           font-weight: 600;
@@ -175,14 +180,16 @@ export default function AuthPage() {
 const styles = {
   page: {
     fontFamily: "'Work Sans', sans-serif",
-    background: "#EDEEF2",
+    background: "linear-gradient(120deg, #3FBFA8, #2E9C8F, #1F7A6C, #145E52, #226E64, #33346B, #2E9C8F)",
+    backgroundSize: "300% 300%",
+    animation: "dc-gradient-shift 12s ease infinite",
     color: "#1C1B1F",
     padding: "40px 20px",
     minHeight: "100%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-  },
+},
   card: {
     background: "#F7F7FB",
     border: "1px solid #DEDDE8",
