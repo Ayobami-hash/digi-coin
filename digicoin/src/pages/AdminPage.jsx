@@ -386,7 +386,7 @@ const styles = {
   subDate: { fontSize: 12, color: "#8C8B99", margin: 0 },
   form: { background: "#F7F7FB", border: "1px solid #DEDDE8", borderRadius: 12, padding: 16, marginBottom: 20 },
   taskList: { display: "flex", flexDirection: "column", gap: 10 },
-  taskCard: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", background: "#F7F7FB", border: "1px solid #DEDDE8", borderRadius: 10, padding: "12px 14px", gap: 10 },
+  taskCard: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", background: "#F0F5F1",border: "1px solid #DEDDE8", borderRadius: 10, padding: "12px 14px", gap: 10 },
   lightboxOverlay: {
     position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 100,
     display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out",
