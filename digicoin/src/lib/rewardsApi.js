@@ -18,8 +18,8 @@ export async function addReferral(referred_name) {
   return data;
 }
 
-export async function withdrawReferralEarnings({ amount, bank_name, bank_account_number }) {
-  const { data } = await api.post("/api/referrals/withdraw", { amount, bank_name, bank_account_number });
+export async function withdrawReferralEarnings({ amount, bank_name, bank_code, bank_account_number }) {
+  const { data } = await api.post("/api/referrals/withdraw", { amount, bank_name, bank_code, bank_account_number });
   return data;
 }
 
@@ -43,8 +43,8 @@ export async function submitTaskProof(file) {
   return data;
 }
 
-export async function withdrawTaskEarnings({ amount, bank_name, bank_account_number }) {
-  const { data } = await api.post("/api/tasks/withdraw", { amount, bank_name, bank_account_number });
+export async function withdrawTaskEarnings({ amount, bank_name, bank_code, bank_account_number }) {
+  const { data } = await api.post("/api/tasks/withdraw", { amount, bank_name, bank_code, bank_account_number });
   return data;
 }
 
@@ -84,4 +84,34 @@ export async function deleteAdminTask(taskId) {
   const { data } = await api.delete(`/api/admin/tasks/${taskId}`);
   return data;
 }
+
+export async function fetchBanks() {
+  const { data } = await api.get("/api/banks");
+  return data.banks;
+}
  
+// --- Admin: withdrawal review + payout ---
+export async function fetchAdminWithdrawals(status = "active") {
+  const { data } = await api.get("/api/admin/withdrawals", { params: { status } });
+  return data.withdrawals;
+}
+ 
+export async function approveWithdrawal(id) {
+  const { data } = await api.post(`/api/admin/withdrawals/${id}/approve`);
+  return data.withdrawal;
+}
+ 
+export async function rejectWithdrawal(id, admin_note) {
+  const { data } = await api.post(`/api/admin/withdrawals/${id}/reject`, { admin_note });
+  return data.withdrawal;
+}
+ 
+export async function payWithdrawal(id) {
+  const { data } = await api.post(`/api/admin/withdrawals/${id}/pay`);
+  return data.withdrawal;
+}
+ 
+export async function finalizeWithdrawalOtp(id, otp) {
+  const { data } = await api.post(`/api/admin/withdrawals/${id}/finalize-otp`, { otp });
+  return data.withdrawal;
+}

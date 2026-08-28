@@ -46,8 +46,6 @@ class ReferralController extends Controller
     }
 
     // POST /api/referrals  { referred_name }
-    // Kept for manual/admin use — real referrals now happen automatically
-    // via the referral_code field at signup (see AuthController::register).
     public function store(Request $request)
     {
         $user = $request->user();
@@ -90,6 +88,7 @@ class ReferralController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:' . $minWithdrawal],
             'bank_name' => ['required', 'string', 'max:255'],
+            'bank_code' => ['required', 'string', 'max:20'],
             'bank_account_number' => ['required', 'string', 'max:50'],
         ]);
 
@@ -104,6 +103,7 @@ class ReferralController extends Controller
             'type' => 'referral',
             'amount' => $data['amount'],
             'bank_name' => $data['bank_name'],
+            'bank_code' => $data['bank_code'],
             'bank_account_number' => $data['bank_account_number'],
             'status' => 'pending',
         ]);

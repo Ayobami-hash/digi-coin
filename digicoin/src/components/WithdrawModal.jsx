@@ -1,19 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-
-const BANKS = [
-  "Access Bank", "GTBank", "Zenith Bank", "First Bank", "UBA",
-  "Fidelity Bank", "Union Bank", "Sterling Bank", "Wema Bank", "Opay", "Kuda",
-];
+import { fetchBanks } from "../lib/rewardsApi";
 
 export default function WithdrawModal({ title, maxAmount, minAmount, onSubmit, onClose, submitting, error }) {
   const [amount, setAmount] = useState(minAmount || "");
-  const [bank, setBank] = useState("");
+  const [bankCode, setBankCode] = useState("");
   const [account, setAccount] = useState("");
+  const [banks, setBanks] = useState([]);
+  const [banksLoading, setBanksLoading] = useState(true);
+  const [banksError, setBanksError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await fetchBanks();
+        setBanks(data || []);
+        if (!data || data.length === 0) {
+          setBanksError("No banks available right now — try again shortly.");
+        }
+      } catch (e) {
+        setBanksError("Could not load the bank list. Try again shortly.");
+      } finally {
+        setBanksLoading(false);
+      }
+    })();
+  }, []);
 
   function handleSubmit(e) {
     e.preventDefault();
-    onSubmit({ amount: Number(amount), bank_name: bank, bank_account_number: account });
+    const bank = banks.find((b) => b.code === bankCode);
+    onSubmit({
+      amount: Number(amount),
+      bank_name: bank?.name || "",
+      bank_code: bankCode,
+      bank_account_number: account,
+    });
   }
 
   return (
@@ -41,10 +62,19 @@ export default function WithdrawModal({ title, maxAmount, minAmount, onSubmit, o
           </p>
 
           <label style={{ ...styles.label, marginTop: 14 }}>Select bank</label>
-          <select className="dc-input" value={bank} onChange={(e) => setBank(e.target.value)} required>
-            <option value="" disabled>Choose your bank</option>
-            {BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
+          <select
+            className="dc-input"
+            value={bankCode}
+            onChange={(e) => setBankCode(e.target.value)}
+            required
+            disabled={banksLoading || banks.length === 0}
+          >
+            <option value="" disabled>
+              {banksLoading ? "Loading banks…" : "Choose your bank"}
+            </option>
+            {banks.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
           </select>
+          {banksError && <p style={styles.error}>{banksError}</p>}
 
           <label style={{ ...styles.label, marginTop: 14 }}>Account number</label>
           <input
@@ -57,7 +87,12 @@ export default function WithdrawModal({ title, maxAmount, minAmount, onSubmit, o
 
           {error && <p style={styles.error}>{error}</p>}
 
-          <button className="dc-btn dc-btn-primary" type="submit" disabled={submitting} style={{ width: "100%", marginTop: 18 }}>
+          <button
+            className="dc-btn dc-btn-primary"
+            type="submit"
+            disabled={submitting || banksLoading || banks.length === 0}
+            style={{ width: "100%", marginTop: 18 }}
+          >
             {submitting ? "Submitting…" : "Submit withdrawal"}
           </button>
         </form>
@@ -80,5 +115,5 @@ const styles = {
   closeBtn: { background: "none", border: "none", cursor: "pointer", color: "#63627A", padding: 4 },
   label: { fontSize: 12, fontWeight: 600, color: "#63627A", display: "block", marginBottom: 6 },
   hint: { fontSize: 12, color: "#8C8B99", marginTop: 6, marginBottom: 0 },
-  error: { fontSize: 13, color: "#B5502F", marginTop: 10 },
+  error: { fontSize: 13, color: "#B5502F", marginTop: 8 },
 };

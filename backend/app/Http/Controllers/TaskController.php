@@ -13,8 +13,6 @@ use Illuminate\Support\Facades\Storage;
 
 class TaskController extends Controller
 {
-    // Ensures today has an assigned task even if the scheduler hasn't run
-    // yet (useful in local dev without `schedule:work` running).
     private function todaysDailyTask(): ?DailyTask
     {
         $today = Carbon::today();
@@ -26,7 +24,7 @@ class TaskController extends Controller
 
         $task = Task::where('is_active', true)->inRandomOrder()->first();
         if (!$task) {
-            return null; // pool is empty
+            return null;
         }
 
         return DailyTask::create(['task_id' => $task->id, 'assignment_date' => $today])->load('task');
@@ -45,8 +43,6 @@ class TaskController extends Controller
             ? TaskSubmission::where('user_id', $user->id)->where('daily_task_id', $dailyTask->id)->first()
             : null;
 
-        // No join needed anymore — reward_amount lives directly on
-        // task_submissions, captured at submission time.
         $monthTotal = TaskSubmission::where('user_id', $user->id)
             ->where('status', 'approved')
             ->whereYear('created_at', $today->year)
@@ -69,9 +65,6 @@ class TaskController extends Controller
                 'title' => $dailyTask->task->title,
                 'description' => $dailyTask->task->description,
                 'link' => $dailyTask->task->link,
-                // Informational only — what you'd earn if you submit right
-                // now, based on your current plan. The actual amount is
-                // locked in on the submission itself at submit time.
                 'reward_amount' => $plan ? (float) $plan['dailyEarnings'] : null,
             ] : null,
             'submission' => $submission ? [
@@ -104,23 +97,18 @@ class TaskController extends Controller
         }
 
         $request->validate([
-            'proof' => ['required', 'file', 'image', 'max:5120'], // 5MB
+            'proof' => ['required', 'file', 'image', 'max:5120'],
         ]);
 
         $existing = TaskSubmission::where('user_id', $user->id)
             ->where('daily_task_id', $dailyTask->id)
             ->first();
 
-        // Block resubmission unless the previous one was rejected.
         if ($existing && $existing->status !== 'rejected') {
             return response()->json(['message' => 'You already submitted proof for today\'s task.'], 422);
         }
 
         $path = $request->file('proof')->store('task-proofs', 'public');
-
-        // Reward is captured NOW, from the user's current plan — this is
-        // what actually gets credited on approval, regardless of any
-        // later plan changes.
         $rewardAmount = $plan['dailyEarnings'];
 
         if ($existing) {
@@ -164,6 +152,7 @@ class TaskController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:1'],
             'bank_name' => ['required', 'string', 'max:255'],
+            'bank_code' => ['required', 'string', 'max:20'],
             'bank_account_number' => ['required', 'string', 'max:50'],
         ]);
 
@@ -182,6 +171,7 @@ class TaskController extends Controller
             'type' => 'task',
             'amount' => $data['amount'],
             'bank_name' => $data['bank_name'],
+            'bank_code' => $data['bank_code'],
             'bank_account_number' => $data['bank_account_number'],
             'status' => 'pending',
         ]);

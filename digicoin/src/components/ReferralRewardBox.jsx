@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { UserPlus, Lock, Unlock } from "lucide-react";
 import WithdrawModal from "./WithdrawModal";
 import { fetchReferralStatus, withdrawReferralEarnings } from "../lib/rewardsApi";
+import { describeWithdrawalStatus } from "../lib/withdrawalStatus";
 
 export default function ReferralRewardBox() {
   const [status, setStatus] = useState(null);
@@ -43,6 +44,7 @@ export default function ReferralRewardBox() {
 
   const { plan, referralCount, totalEarned, withdrawUnlocked, minimumWithdrawal, lastWithdrawal } = status;
   const referralsToUnlock = Math.max(0, 3 - referralCount);
+  const withdrawalMeta = lastWithdrawal ? describeWithdrawalStatus(lastWithdrawal.status) : null;
 
   return (
     <div style={styles.card}>
@@ -86,9 +88,9 @@ export default function ReferralRewardBox() {
           </button>
 
           {lastWithdrawal && (
-            <p style={styles.withdrawalNote}>
-              ₦{Number(lastWithdrawal.amount).toLocaleString()} withdrawn —{" "}
-              {lastWithdrawal.status === "successful" ? "withdrawal successful" : "pending"}
+            <p style={{ ...styles.withdrawalNote, color: withdrawalMeta.color }}>
+              ₦{Number(lastWithdrawal.amount).toLocaleString()} — {withdrawalMeta.label}
+              {lastWithdrawal.status === "rejected" && lastWithdrawal.admin_note && ` (${lastWithdrawal.admin_note})`}
             </p>
           )}
 
@@ -123,6 +125,6 @@ const styles = {
   score: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 28, fontWeight: 700, color: "#33346B" },
   scoreLabel: { fontSize: 12, color: "#63627A", marginTop: 2 },
   counter: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#63627A", background: "#E6E5F0", padding: "6px 10px", borderRadius: 8 },
-  withdrawalNote: { fontSize: 13, color: "#33346B", marginTop: 10, fontWeight: 500 },
+  withdrawalNote: { fontSize: 13, marginTop: 10, fontWeight: 600 },
   error: { fontSize: 13, color: "#B5502F", marginTop: 10 },
 };

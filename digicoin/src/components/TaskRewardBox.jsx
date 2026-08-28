@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Upload, Lock, Unlock, Clock, ExternalLink, Hourglass, CheckCircle2, XCircle } from "lucide-react";
 import WithdrawModal from "./WithdrawModal";
 import { fetchTaskStatus, submitTaskProof, withdrawTaskEarnings } from "../lib/rewardsApi";
+import { describeWithdrawalStatus } from "../lib/withdrawalStatus";
 
 const STATUS_META = {
   pending: { icon: Hourglass, color: "#C99A3D", bg: "#FBF3E1", label: "Pending review" },
@@ -47,7 +48,7 @@ export default function TaskRewardBox() {
       setError(err.response?.data?.message || "Could not submit proof");
     } finally {
       setUploading(false);
-      e.target.value = ""; // allow re-selecting the same file if needed
+      e.target.value = "";
     }
   }
 
@@ -73,6 +74,7 @@ export default function TaskRewardBox() {
   const meta = submission ? STATUS_META[submission.status] : null;
   const StatusIcon = meta?.icon;
   const canSubmit = !submission || submission.status === "rejected";
+  const withdrawalMeta = lastWithdrawal ? describeWithdrawalStatus(lastWithdrawal.status) : null;
 
   return (
     <div style={styles.card}>
@@ -160,9 +162,9 @@ export default function TaskRewardBox() {
           </button>
 
           {lastWithdrawal && (
-            <p style={styles.withdrawalNote}>
-              ₦{Number(lastWithdrawal.amount).toLocaleString()} withdrawn —{" "}
-              {lastWithdrawal.status === "successful" ? "withdrawal successful" : "pending"}
+            <p style={{ ...styles.withdrawalNote, color: withdrawalMeta.color }}>
+              ₦{Number(lastWithdrawal.amount).toLocaleString()} — {withdrawalMeta.label}
+              {lastWithdrawal.status === "rejected" && lastWithdrawal.admin_note && ` (${lastWithdrawal.admin_note})`}
             </p>
           )}
 
@@ -204,6 +206,6 @@ const styles = {
   taskLink: { fontSize: 12, color: "#33346B", fontWeight: 600, marginTop: 8, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" },
   statusBadge: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, padding: "6px 12px", borderRadius: 8, marginTop: 12 },
   rejectNote: { fontSize: 12, color: "#B5502F", marginTop: 6, marginBottom: 0 },
-  withdrawalNote: { fontSize: 13, color: "#33346B", marginTop: 10, fontWeight: 500 },
+  withdrawalNote: { fontSize: 13, marginTop: 10, fontWeight: 600 },
   error: { fontSize: 13, color: "#B5502F", marginTop: 10 },
 };

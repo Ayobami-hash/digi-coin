@@ -9,6 +9,9 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\Admin\AdminTaskController;
+use App\Http\Controllers\BankController;
+use App\Http\Controllers\Admin\AdminWithdrawalController;
+ 
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -35,6 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tasks/status', [TaskController::class, 'status']);
     Route::post('/tasks/submit', [TaskController::class, 'submit']);
     Route::post('/tasks/withdraw', [TaskController::class, 'withdraw']);
+    Route::get('/banks', [BankController::class, 'index']);
 
     // Admin-only routes
     Route::middleware('admin')->prefix('admin')->group(function () {
@@ -46,6 +50,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/task-submissions', [AdminTaskController::class, 'indexSubmissions']);
         Route::post('/task-submissions/{submission}/approve', [AdminTaskController::class, 'approve']);
         Route::post('/task-submissions/{submission}/reject', [AdminTaskController::class, 'reject']);
+
+        Route::get('/withdrawals', [AdminWithdrawalController::class, 'index']);
+        Route::post('/withdrawals/{withdrawal}/approve', [AdminWithdrawalController::class, 'approve']);
+        Route::post('/withdrawals/{withdrawal}/reject', [AdminWithdrawalController::class, 'reject']);
+        Route::post('/withdrawals/{withdrawal}/pay', [AdminWithdrawalController::class, 'pay']);
+        Route::post('/withdrawals/{withdrawal}/finalize-otp', [AdminWithdrawalController::class, 'finalizeOtp']);
     });
 
     Route::get('/referrals/status', [ReferralController::class, 'status']);
