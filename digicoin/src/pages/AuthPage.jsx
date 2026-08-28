@@ -191,7 +191,7 @@ const styles = {
     justifyContent: "center",
 },
   card: {
-    background: "#F7F7FB",
+   background: "#F0F5F1",
     border: "1px solid #DEDDE8",
     borderRadius: 14,
     padding: "28px 26px",
