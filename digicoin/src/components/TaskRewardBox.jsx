@@ -188,7 +188,7 @@ export default function TaskRewardBox() {
 }
 
 const styles = {
-  card: { background: "#F7F7FB", border: "1px solid #DEDDE8", borderRadius: 14, padding: "22px 24px", marginBottom: 16 },
+  card: { background: "#F0F5F1",  border: "1px solid #DEDDE8", borderRadius: 14, padding: "22px 24px", marginBottom: 16 },
   eyebrow: {
     fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.06em",
     textTransform: "uppercase", color: "#63627A", margin: "0 0 12px",
