@@ -282,8 +282,7 @@ const styles = {
   },
   brandRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" },
   wordmark: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 19, letterSpacing: "-0.01em" },
-  tagline: { fontSize: 13, color: "rgba(255, 255, 255, 0.75)", marginLeft: 4 },
-  card: {
+ tagline: { fontSize: 13, color: "rgba(255, 255, 255, 0.75)", marginLeft: 4, fontWeight: 600 },
     background: "#F0F5F1",
     border: "1px solid rgba(73, 197, 182, 0.5)",
     borderRadius: 14,
