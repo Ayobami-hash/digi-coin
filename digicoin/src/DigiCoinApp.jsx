@@ -173,20 +173,20 @@ export default function DigiCoinApp() {
         .dc-btn-primary:hover { opacity: 0.92; }
         .dc-btn-ghost { background: transparent; color: #33346B; border: 1.5px solid #33346B; }
         .dc-btn-ghost:hover { background: rgba(51,52,107,0.07); }
-       .dc-btn-outline-blue {
-  background: linear-gradient(135deg, #33346B, #1F2050);
-  color: #FFFFFF;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 14px rgba(31, 32, 80, 0.45);
-}
-.dc-btn-outline-blue:hover {
-  background: linear-gradient(135deg, #454785, #33346B);
-  box-shadow: 0 6px 18px rgba(31, 32, 80, 0.6);
-  transform: translateY(-1px);
-}
-.dc-btn-outline-blue:active {
-  transform: translateY(0);
-}
+        .dc-btn-outline-blue {
+          background: linear-gradient(135deg, #33346B, #1F2050);
+          color: #FFFFFF;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          box-shadow: 0 4px 14px rgba(31, 32, 80, 0.45);
+        }
+        .dc-btn-outline-blue:hover {
+          background: linear-gradient(135deg, #454785, #33346B);
+          box-shadow: 0 6px 18px rgba(31, 32, 80, 0.6);
+          transform: translateY(-1px);
+        }
+        .dc-btn-outline-blue:active {
+          transform: translateY(0);
+        }
         @media (max-width: 560px) {
           .dc-row { flex-direction: column !important; align-items: stretch !important; }
           .dc-track { flex-wrap: wrap !important; row-gap: 28px !important; }
@@ -282,7 +282,8 @@ const styles = {
   },
   brandRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" },
   wordmark: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 19, letterSpacing: "-0.01em" },
- tagline: { fontSize: 13, color: "rgba(255, 255, 255, 0.75)", marginLeft: 4, fontWeight: 600 },
+  tagline: { fontSize: 13, color: "rgba(255, 255, 255, 0.75)", marginLeft: 4, fontWeight: 600 },
+  card: {
     background: "#F0F5F1",
     border: "1px solid rgba(73, 197, 182, 0.5)",
     borderRadius: 14,
