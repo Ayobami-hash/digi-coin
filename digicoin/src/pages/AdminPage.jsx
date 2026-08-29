@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
-import { Coins, Check, X, Plus, ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { Coins, Check, X, Plus, ArrowLeft, Pencil, Trash2, Landmark } from "lucide-react";
 import {
   fetchPendingSubmissions, approveSubmission, rejectSubmission,
   fetchAdminTasks, createAdminTask, updateAdminTask, deleteAdminTask,
+  fetchAdminWithdrawals, approveWithdrawal, rejectWithdrawal, payWithdrawal, finalizeWithdrawalOtp,
 } from "../lib/rewardsApi";
 
 export default function AdminPage({ onBack }) {
-  const [tab, setTab] = useState("submissions"); // "submissions" | "tasks"
+  const [tab, setTab] = useState("submissions"); // "submissions" | "tasks" | "withdrawals"
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
   return (
@@ -54,11 +55,19 @@ export default function AdminPage({ onBack }) {
         >
           Task pool
         </button>
+        <button
+          onClick={() => setTab("withdrawals")}
+          style={{ ...styles.tabBtn, ...(tab === "withdrawals" ? styles.tabBtnActive : {}) }}
+        >
+          Withdrawals
+        </button>
       </div>
 
       {tab === "submissions"
         ? <SubmissionsPanel onImageClick={setLightboxUrl} />
-        : <TaskPoolPanel />}
+        : tab === "tasks"
+        ? <TaskPoolPanel />
+        : <WithdrawalsPanel />}
 
       {lightboxUrl && (
         <div style={styles.lightboxOverlay} onClick={() => setLightboxUrl(null)}>
@@ -85,9 +94,15 @@ function SubmissionsPanel({ onImageClick }) {
     setError("");
     try {
       const data = await fetchPendingSubmissions("pending");
-      setSubmissions(data);
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+      setSubmissions(list);
     } catch (e) {
       setError(e.response?.data?.message || "Could not load submissions");
+      setSubmissions([]);
     } finally {
       setLoading(false);
     }
@@ -142,8 +157,8 @@ function SubmissionsPanel({ onImageClick }) {
                 onClick={() => onImageClick(s.proof_url)}
               />
               <div style={styles.subBody}>
-                <p style={styles.subUser}>{s.user.name} <span style={styles.subEmail}>({s.user.email})</span></p>
-                <p style={styles.subTask}>{s.task.title} — ₦{Number(s.reward_amount).toLocaleString()}</p>
+                <p style={styles.subUser}>{s.user?.name} <span style={styles.subEmail}>({s.user?.email})</span></p>
+                <p style={styles.subTask}>{s.task?.title} — ₦{Number(s.reward_amount).toLocaleString()}</p>
                 <p style={styles.subDate}>{new Date(s.submitted_at).toLocaleString()}</p>
 
                 {rejectingId === s.id ? (
@@ -201,15 +216,22 @@ function TaskPoolPanel() {
   const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [rowError, setRowError] = useState({}); // { [taskId]: message }
+  const [rowError, setRowError] = useState({});
   const [busyId, setBusyId] = useState(null);
 
   async function load() {
     setLoading(true);
     try {
-      setTasks(await fetchAdminTasks());
+      const data = await fetchAdminTasks();
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
+      setTasks(list);
     } catch (e) {
       console.error(e);
+      setTasks([]);
     } finally {
       setLoading(false);
     }
@@ -359,6 +381,221 @@ function TaskPoolPanel() {
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WithdrawalsPanel() {
+  const [statusFilter, setStatusFilter] = useState("pending");
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectNote, setRejectNote] = useState("");
+  const [otpInputs, setOtpInputs] = useState({});
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState("");
+
+  async function load(status = statusFilter) {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await fetchAdminWithdrawals(status);
+      setWithdrawals(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.response?.data?.message || "Could not load withdrawals");
+      setWithdrawals([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(statusFilter); }, [statusFilter]);
+
+  async function handleApprove(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      await approveWithdrawal(id);
+      load();
+    } catch (e) {
+      setError(e.response?.data?.message || "Approval/transfer attempt failed");
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleReject(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      await rejectWithdrawal(id, rejectNote);
+      setWithdrawals((prev) => prev.filter((w) => w.id !== id));
+      setRejectingId(null);
+      setRejectNote("");
+    } catch (e) {
+      setError(e.response?.data?.message || "Could not reject withdrawal");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handlePay(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      await payWithdrawal(id);
+      load();
+    } catch (e) {
+      setError(e.response?.data?.message || "Retry failed");
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleFinalizeOtp(id) {
+    const otp = otpInputs[id];
+    if (!otp) return;
+    setBusyId(id);
+    setError("");
+    try {
+      await finalizeWithdrawalOtp(id, otp);
+      setOtpInputs((prev) => ({ ...prev, [id]: "" }));
+      load();
+    } catch (e) {
+      setError(e.response?.data?.message || "OTP finalization failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const statusOptions = [
+    { value: "pending", label: "Pending" },
+    { value: "otp_required", label: "Needs OTP" },
+    { value: "failed", label: "Failed" },
+    { value: "processing", label: "Processing" },
+    { value: "all", label: "All" },
+  ];
+
+  const statusBadge = {
+    pending: { bg: "#FFF3E0", color: "#B5502F", label: "Pending" },
+    otp_required: { bg: "#F3E8FF", color: "#7C3AED", label: "Needs OTP" },
+    processing: { bg: "#E0F0FF", color: "#1E6BB5", label: "Processing" },
+    failed: { bg: "#FEF2F0", color: "#B5502F", label: "Failed" },
+    successful: { bg: "#D4EDDA", color: "#1E5631", label: "Successful" },
+    rejected: { bg: "#E1E0EA", color: "#63627A", label: "Rejected" },
+    approved: { bg: "#E6E5F0", color: "#33346B", label: "Approved" },
+  };
+
+  if (loading) return <p style={styles.hint}>Loading withdrawals…</p>;
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {statusOptions.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setStatusFilter(opt.value)}
+            style={{ ...styles.tabBtn, fontSize: 12, padding: "6px 10px", ...(statusFilter === opt.value ? styles.tabBtnActive : {}) }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {error && <p style={styles.error}>{error}</p>}
+      {withdrawals.length === 0 ? (
+        <p style={styles.hint}>No withdrawals in this state.</p>
+      ) : (
+        <div style={styles.taskList}>
+          {withdrawals.map((w) => {
+            const badge = statusBadge[w.status] || { bg: "#E1E0EA", color: "#63627A", label: w.status };
+            return (
+              <div key={w.id} style={styles.taskCard}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <p style={{ ...styles.subUser, margin: 0 }}>
+                      {w.user?.name} <span style={styles.subEmail}>({w.user?.email})</span>
+                    </p>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: badge.bg, color: badge.color }}>
+                      {badge.label}
+                    </span>
+                  </div>
+                  <p style={styles.subTask}>
+                    ₦{Number(w.amount).toLocaleString()} — {w.type === "referral" ? "Referral" : "Task"} withdrawal
+                  </p>
+                  <p style={styles.subDate}>{w.bank_name} · {w.bank_account_number}</p>
+                  <p style={styles.subDate}>{new Date(w.created_at).toLocaleString()}</p>
+                  {w.admin_note && <p style={styles.error}>{w.admin_note}</p>}
+
+                  {rejectingId === w.id && (
+                    <div style={{ marginTop: 10 }}>
+                      <input
+                        className="dc-input"
+                        placeholder="Reason (required)"
+                        value={rejectNote}
+                        onChange={(e) => setRejectNote(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  {w.status === "otp_required" && (
+                    <div style={{ marginTop: 10 }}>
+                      <input
+                        className="dc-input"
+                        placeholder="Enter OTP from Paystack"
+                        value={otpInputs[w.id] || ""}
+                        onChange={(e) => setOtpInputs((prev) => ({ ...prev, [w.id]: e.target.value }))}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", gap: 6, flexDirection: "column" }}>
+                  {w.status === "pending" && rejectingId !== w.id && (
+                    <>
+                      <button className="dc-btn" onClick={() => handleApprove(w.id)} disabled={busyId === w.id} style={{ background: "#2E9E5B", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <Check size={14} /> {busyId === w.id ? "Processing…" : "Approve & pay"}
+                      </button>
+                      <button className="dc-btn" onClick={() => setRejectingId(w.id)} disabled={busyId === w.id} style={{ background: "#FEF2F0", color: "#B5502F", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <X size={14} /> Reject
+                      </button>
+                    </>
+                  )}
+
+                  {w.status === "pending" && rejectingId === w.id && (
+                    <>
+                      <button className="dc-btn" onClick={() => handleReject(w.id)} disabled={busyId === w.id || !rejectNote} style={{ background: "#B5502F", color: "#fff" }}>
+                        Confirm reject
+                      </button>
+                      <button className="dc-btn" onClick={() => setRejectingId(null)} style={{ background: "#E1E0EA", color: "#33346B" }}>
+                        Cancel
+                      </button>
+                    </>
+                  )}
+
+                  {(w.status === "failed" || w.status === "approved") && (
+                    <button className="dc-btn" onClick={() => handlePay(w.id)} disabled={busyId === w.id} style={{ background: "#33346B", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <Landmark size={14} /> {busyId === w.id ? "Retrying…" : "Retry transfer"}
+                    </button>
+                  )}
+
+                  {w.status === "otp_required" && (
+                    <button className="dc-btn" onClick={() => handleFinalizeOtp(w.id)} disabled={busyId === w.id || !otpInputs[w.id]} style={{ background: "#7C3AED", color: "#fff" }}>
+                      {busyId === w.id ? "Submitting…" : "Submit OTP"}
+                    </button>
+                  )}
+
+                  {["processing", "successful", "rejected"].includes(w.status) && (
+                    <p style={{ ...styles.hint, margin: 0 }}>No action needed</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -26,6 +26,7 @@ class BankController extends Controller
 
             return collect($body['data'])
                 ->map(fn ($b) => ['name' => $b['name'], 'code' => $b['code']])
+                ->unique('code')
                 ->sortBy('name')
                 ->values()
                 ->all();

@@ -4,172 +4,220 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Withdrawal;
+use App\Services\PaystackService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class AdminWithdrawalController extends Controller
 {
-    private function secretKey(): ?string
+    public function __construct(private PaystackService $paystack)
     {
-        return config('services.paystack.secret_key');
     }
 
-    // GET /api/admin/withdrawals?status=pending
-    // Pass status=all to see everything, including terminal states.
+    // GET /api/admin/withdrawals?status=pending&type=referral
     public function index(Request $request)
     {
-        $status = $request->query('status', 'active');
+        $status = $request->query('status', 'pending');
+        $type = $request->query('type');
 
         $withdrawals = Withdrawal::with('user:id,name,email')
-            ->when($status === 'active', fn ($q) => $q->whereIn('status', ['pending', 'approved', 'otp_required', 'processing']))
-            ->when(!in_array($status, ['active', 'all']), fn ($q) => $q->where('status', $status))
-            ->orderBy('created_at')
-            ->get();
+            ->when($status !== 'all', fn ($q) => $q->where('status', $status))
+            ->when($type, fn ($q) => $q->where('type', $type))
+            ->orderByDesc('created_at')
+            ->paginate(25);
 
-        return response()->json(['withdrawals' => $withdrawals]);
+        return response()->json($withdrawals);
     }
 
     // POST /api/admin/withdrawals/{withdrawal}/approve
+    // Approving IS the Paystack action: creates the recipient (if needed)
+    // and initiates the transfer immediately. If Paystack requires an OTP
+    // to finalize, status becomes 'otp_required' and the admin must call
+    // finalize-otp next. Otherwise it becomes 'processing' and the webhook
+    // will move it to 'successful'/'failed' when Paystack confirms.
     public function approve(Request $request, Withdrawal $withdrawal)
     {
-        if ($withdrawal->status !== 'pending') {
-            return response()->json(['message' => 'Only pending withdrawals can be approved.'], 422);
+        $admin = $request->user();
+
+        $locked = DB::transaction(function () use ($withdrawal, $admin) {
+            $row = Withdrawal::where('id', $withdrawal->id)->lockForUpdate()->first();
+
+            if ($row->status !== 'pending') {
+                return null;
+            }
+
+            $row->update([
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+            ]);
+
+            return $row;
+        });
+
+        if (! $locked) {
+            return response()->json(['message' => 'This withdrawal has already been reviewed.'], 422);
         }
 
-        $withdrawal->update([
-            'status' => 'approved',
-            'admin_note' => null,
-            'reviewed_at' => now(),
-            'reviewed_by' => $request->user()->id,
-        ]);
-
-        return response()->json(['withdrawal' => $withdrawal]);
-    }
-
-    // POST /api/admin/withdrawals/{withdrawal}/reject   { admin_note? }
-    public function reject(Request $request, Withdrawal $withdrawal)
-    {
-        if (!in_array($withdrawal->status, ['pending', 'approved'])) {
-            return response()->json(['message' => 'This withdrawal cannot be rejected.'], 422);
-        }
-
-        $data = $request->validate([
-            'admin_note' => ['nullable', 'string', 'max:500'],
-        ]);
-
-        $withdrawal->update([
-            'status' => 'rejected',
-            'admin_note' => $data['admin_note'] ?? null,
-            'reviewed_at' => now(),
-            'reviewed_by' => $request->user()->id,
-        ]);
-
-        return response()->json(['withdrawal' => $withdrawal]);
+        return $this->attemptTransfer($locked);
     }
 
     // POST /api/admin/withdrawals/{withdrawal}/pay
-    // Creates a Paystack transfer recipient (if needed) and initiates the transfer.
+    // Retry/resend action for a withdrawal stuck in 'failed' after a prior
+    // approve attempt errored out (e.g. Paystack was down, insufficient
+    // balance at the time, network blip). Re-runs the same transfer logic
+    // without re-doing the 'pending' → approved status check.
     public function pay(Request $request, Withdrawal $withdrawal)
     {
-        if ($withdrawal->status !== 'approved') {
-            return response()->json(['message' => 'Only approved withdrawals can be paid.'], 422);
-        }
+        $locked = DB::transaction(function () use ($withdrawal) {
+            $row = Withdrawal::where('id', $withdrawal->id)->lockForUpdate()->first();
 
-        $secretKey = $this->secretKey();
-        if (!$secretKey) {
-            return response()->json(['message' => 'Paystack is not configured.'], 500);
-        }
-
-        if (!$withdrawal->bank_code) {
-            return response()->json([
-                'message' => 'This withdrawal has no bank code on file and can\'t be auto-paid. Reject it and ask the user to resubmit with an up-to-date bank selection.',
-            ], 422);
-        }
-
-        // 1. Create a transfer recipient if we don't already have one on file.
-        if (!$withdrawal->paystack_recipient_code) {
-            $recipientResponse = Http::withToken($secretKey)->post('https://api.paystack.co/transferrecipient', [
-                'type' => 'nuban',
-                'name' => $withdrawal->user->name,
-                'account_number' => $withdrawal->bank_account_number,
-                'bank_code' => $withdrawal->bank_code,
-                'currency' => 'NGN',
-            ]);
-
-            $recipientBody = $recipientResponse->json();
-
-            if (!$recipientResponse->successful() || !($recipientBody['status'] ?? false)) {
-                return response()->json([
-                    'message' => $recipientBody['message'] ?? 'Could not verify bank account for transfer.',
-                ], 422);
+            if (! in_array($row->status, ['failed', 'approved'], true)) {
+                return null;
             }
 
-            $withdrawal->paystack_recipient_code = $recipientBody['data']['recipient_code'];
-            $withdrawal->save();
+            return $row;
+        });
+
+        if (! $locked) {
+            return response()->json(['message' => 'Only failed or approved withdrawals can be retried.'], 422);
         }
 
-        // 2. Initiate the transfer.
-        $transferResponse = Http::withToken($secretKey)->post('https://api.paystack.co/transfer', [
-            'source' => 'balance',
-            'amount' => (int) round($withdrawal->amount * 100), // Paystack expects kobo
-            'recipient' => $withdrawal->paystack_recipient_code,
-            'reason' => ucfirst($withdrawal->type) . ' earnings withdrawal — DigiCoin',
-            'reference' => 'dc_wd_' . $withdrawal->id . '_' . now()->timestamp,
-        ]);
-
-        $transferBody = $transferResponse->json();
-
-        if (!$transferResponse->successful() || !($transferBody['status'] ?? false)) {
-            $withdrawal->update(['status' => 'failed', 'admin_note' => $transferBody['message'] ?? 'Transfer failed']);
-            return response()->json([
-                'message' => $transferBody['message'] ?? 'Could not initiate Paystack transfer.',
-                'withdrawal' => $withdrawal,
-            ], 422);
-        }
-
-        $data = $transferBody['data'];
-        $withdrawal->paystack_transfer_code = $data['transfer_code'] ?? null;
-        $withdrawal->paystack_transfer_reference = $data['reference'] ?? null;
-
-        // Paystack transfers can come back needing an OTP before they
-        // finalize, depending on the account's transfer settings.
-        $withdrawal->status = match ($data['status'] ?? null) {
-            'success' => 'successful',
-            'otp' => 'otp_required',
-            default => 'processing',
-        };
-
-        $withdrawal->save();
-
-        return response()->json(['withdrawal' => $withdrawal]);
+        return $this->attemptTransfer($locked);
     }
 
     // POST /api/admin/withdrawals/{withdrawal}/finalize-otp   { otp }
+    // Called when a prior approve/pay attempt returned 'otp_required'.
+    // Submits the OTP Paystack sent to your business phone/email to
+    // complete the transfer.
     public function finalizeOtp(Request $request, Withdrawal $withdrawal)
     {
-        if ($withdrawal->status !== 'otp_required') {
-            return response()->json(['message' => 'This withdrawal is not waiting on an OTP.'], 422);
-        }
-
         $data = $request->validate([
             'otp' => ['required', 'string'],
         ]);
 
-        $secretKey = $this->secretKey();
-
-        $response = Http::withToken($secretKey)->post('https://api.paystack.co/transfer/finalize_transfer', [
-            'transfer_code' => $withdrawal->paystack_transfer_code,
-            'otp' => $data['otp'],
-        ]);
-
-        $body = $response->json();
-
-        if (!$response->successful() || !($body['status'] ?? false)) {
-            return response()->json(['message' => $body['message'] ?? 'Could not finalize transfer.'], 422);
+        if ($withdrawal->status !== 'otp_required') {
+            return response()->json(['message' => 'This withdrawal is not awaiting OTP finalization.'], 422);
         }
 
-        $withdrawal->update(['status' => 'successful']);
+        if (! $withdrawal->paystack_transfer_code) {
+            return response()->json(['message' => 'No transfer code on record for this withdrawal.'], 422);
+        }
 
-        return response()->json(['withdrawal' => $withdrawal]);
+        try {
+            $result = $this->paystack->finalizeTransfer($withdrawal->paystack_transfer_code, $data['otp']);
+
+            $withdrawal->update([
+                'status' => 'processing',
+                'admin_note' => null,
+            ]);
+
+            return response()->json(['withdrawal' => $withdrawal->fresh(), 'paystack' => $result]);
+        } catch (RuntimeException $e) {
+            Log::error('Paystack OTP finalization failed', [
+                'withdrawal_id' => $withdrawal->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $withdrawal->update([
+                'admin_note' => 'OTP finalization failed: ' . $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'OTP finalization failed.',
+                'error' => $e->getMessage(),
+            ], 502);
+        }
+    }
+
+    // POST /api/admin/withdrawals/{withdrawal}/reject
+    public function reject(Request $request, Withdrawal $withdrawal)
+    {
+        $admin = $request->user();
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        return DB::transaction(function () use ($withdrawal, $admin, $data) {
+            $locked = Withdrawal::where('id', $withdrawal->id)->lockForUpdate()->first();
+
+            if ($locked->status !== 'pending') {
+                return response()->json(['message' => 'This withdrawal has already been reviewed.'], 422);
+            }
+
+            $locked->update([
+                'status' => 'rejected',
+                'admin_note' => $data['reason'],
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+            ]);
+
+            // No manual balance restore needed — 'rejected' isn't in
+            // CLAIMED_STATUSES, so availableBalance() picks this amount
+            // back up automatically.
+
+            return response()->json(['withdrawal' => $locked->fresh()]);
+        });
+    }
+
+    /**
+     * Shared logic for approve() and pay(): create the recipient if
+     * needed, initiate the transfer, and handle the three possible
+     * outcomes — immediate success, OTP required, or failure.
+     */
+    private function attemptTransfer(Withdrawal $withdrawal)
+    {
+        try {
+            $recipientCode = $withdrawal->paystack_recipient_code
+                ?? $this->paystack->createTransferRecipient(
+                    $withdrawal->user->name ?? 'Customer',
+                    $withdrawal->bank_account_number,
+                    $withdrawal->bank_code,
+                );
+
+            $reference = $withdrawal->paystack_transfer_reference ?? (string) Str::uuid();
+            $amountInKobo = (int) round($withdrawal->amount * 100);
+
+            $transfer = $this->paystack->initiateTransfer(
+                $recipientCode,
+                $amountInKobo,
+                $reference,
+                ucfirst($withdrawal->type) . ' reward withdrawal'
+            );
+
+            $paystackStatus = $transfer['status'] ?? null;
+
+            // Paystack returns status "otp" on the transfer object when
+            // OTP finalization is required before funds actually move.
+            $newStatus = $paystackStatus === 'otp' ? 'otp_required' : 'processing';
+
+            $withdrawal->update([
+                'status' => $newStatus,
+                'admin_note' => null,
+                'paystack_recipient_code' => $recipientCode,
+                'paystack_transfer_code' => $transfer['transfer_code'] ?? null,
+                'paystack_transfer_reference' => $reference,
+            ]);
+
+            return response()->json(['withdrawal' => $withdrawal->fresh()]);
+        } catch (RuntimeException $e) {
+            Log::error('Paystack transfer attempt failed', [
+                'withdrawal_id' => $withdrawal->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $withdrawal->update([
+                'status' => 'failed',
+                'admin_note' => 'Transfer failed: ' . $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Transfer failed. The amount is available for the user again; you can retry via the pay action.',
+                'error' => $e->getMessage(),
+            ], 502);
+        }
     }
 }

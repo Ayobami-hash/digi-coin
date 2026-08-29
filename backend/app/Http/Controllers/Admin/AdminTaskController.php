@@ -3,64 +3,69 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\DailyTask;
 use App\Models\Task;
 use App\Models\TaskSubmission;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class AdminTaskController extends Controller
 {
     // GET /api/admin/tasks
-    public function indexTasks()
+    public function indexTasks(Request $request)
     {
-        return response()->json(['tasks' => Task::orderByDesc('created_at')->get()]);
+        $tasks = Task::query()
+            ->orderByDesc('created_at')
+            ->paginate(25);
+
+        return response()->json([
+            'tasks' => $tasks,
+        ]);
     }
 
     // POST /api/admin/tasks
     public function storeTask(Request $request)
     {
         $data = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'link' => ['nullable', 'url', 'max:500'],
+            'title'         => ['required', 'string', 'max:255'],
+            'description'   => ['nullable', 'string', 'max:2000'],
+            'link'          => ['nullable', 'url', 'max:2048'],
+            'reward_amount' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
+            'is_active'     => ['sometimes', 'boolean'],
         ]);
 
-        $task = Task::create($data + ['is_active' => true]);
+        $task = Task::create($data);
 
-        return response()->json(['task' => $task], 201);
+        return response()->json([
+            'task' => $task,
+        ], 201);
     }
 
     // PATCH /api/admin/tasks/{task}
     public function updateTask(Request $request, Task $task)
     {
         $data = $request->validate([
-            'title' => ['sometimes', 'string', 'max:255'],
-            'description' => ['sometimes', 'nullable', 'string'],
-            'link' => ['sometimes', 'nullable', 'url', 'max:500'],
-            'is_active' => ['sometimes', 'boolean'],
+            'title'         => ['sometimes', 'required', 'string', 'max:255'],
+            'description'   => ['nullable', 'string', 'max:2000'],
+            'link'          => ['nullable', 'url', 'max:2048'],
+            'reward_amount' => ['sometimes', 'required', 'numeric', 'min:0', 'max:9999999999.99'],
+            'is_active'     => ['sometimes', 'boolean'],
         ]);
 
         $task->update($data);
 
-        return response()->json(['task' => $task]);
+        return response()->json([
+            'task' => $task->fresh(),
+        ]);
     }
 
     // DELETE /api/admin/tasks/{task}
     public function destroyTask(Task $task)
     {
-        $hasHistory = DailyTask::where('task_id', $task->id)->exists()
-            || TaskSubmission::where('task_id', $task->id)->exists();
-
-        if ($hasHistory) {
-            return response()->json([
-                'message' => 'This task has assignment or submission history and can\'t be deleted. Deactivate it instead.',
-            ], 422);
-        }
-
         $task->delete();
 
-        return response()->json(['message' => 'Task deleted']);
+        return response()->json([
+            'message' => 'Task deleted successfully.',
+        ]);
     }
 
     // GET /api/admin/task-submissions?status=pending
@@ -70,49 +75,59 @@ class AdminTaskController extends Controller
 
         $submissions = TaskSubmission::with(['user:id,name,email', 'task:id,title'])
             ->when($status !== 'all', fn ($q) => $q->where('status', $status))
-            ->orderBy('created_at')
-            ->get()
-            ->map(fn ($s) => [
-                'id' => $s->id,
-                'user' => $s->user,
-                'task' => $s->task,
-                'reward_amount' => (float) $s->reward_amount, // captured at submission time
-                'status' => $s->status,
-                'admin_note' => $s->admin_note,
-                'proof_url' => Storage::disk('public')->url($s->proof_path),
-                'submitted_at' => $s->created_at,
-            ]);
+            ->orderByRaw('admin_note IS NULL') // flagged ones surface first
+            ->orderByDesc('created_at')
+            ->paginate(25);
 
-        return response()->json(['submissions' => $submissions]);
+        return response()->json($submissions);
     }
 
     // POST /api/admin/task-submissions/{submission}/approve
     public function approve(Request $request, TaskSubmission $submission)
     {
-        $submission->update([
-            'status' => 'approved',
-            'admin_note' => null,
-            'reviewed_at' => now(),
-            'reviewed_by' => $request->user()->id,
-        ]);
+        $admin = $request->user();
 
-        return response()->json(['submission' => $submission]);
+        return DB::transaction(function () use ($submission, $admin) {
+            $locked = TaskSubmission::where('id', $submission->id)->lockForUpdate()->first();
+
+            if ($locked->status !== 'pending') {
+                return response()->json(['message' => 'This submission has already been reviewed.'], 422);
+            }
+
+            $locked->update([
+                'status' => 'approved',
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+            ]);
+
+            return response()->json(['submission' => $locked->fresh()]);
+        });
     }
 
-    // POST /api/admin/task-submissions/{submission}/reject   { admin_note? }
+    // POST /api/admin/task-submissions/{submission}/reject
     public function reject(Request $request, TaskSubmission $submission)
     {
+        $admin = $request->user();
+
         $data = $request->validate([
-            'admin_note' => ['nullable', 'string', 'max:500'],
+            'reason' => ['required', 'string', 'max:500'],
         ]);
 
-        $submission->update([
-            'status' => 'rejected',
-            'admin_note' => $data['admin_note'] ?? null,
-            'reviewed_at' => now(),
-            'reviewed_by' => $request->user()->id,
-        ]);
+        return DB::transaction(function () use ($submission, $admin, $data) {
+            $locked = TaskSubmission::where('id', $submission->id)->lockForUpdate()->first();
 
-        return response()->json(['submission' => $submission]);
+            if ($locked->status !== 'pending') {
+                return response()->json(['message' => 'This submission has already been reviewed.'], 422);
+            }
+
+            $locked->update([
+                'status' => 'rejected',
+                'admin_note' => $data['reason'],
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+            ]);
+
+            return response()->json(['submission' => $locked->fresh()]);
+        });
     }
 }

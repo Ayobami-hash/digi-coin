@@ -51,13 +51,13 @@ class TaskController extends Controller
             : null;
 
         $monthTotal = TaskSubmission::where('user_id', $user->id)
-            ->where('status', 'approved')
+            ->approved()
             ->whereYear('created_at', $today->year)
             ->whereMonth('created_at', $today->month)
             ->sum('reward_amount');
 
         $totalEarned = TaskSubmission::where('user_id', $user->id)
-            ->where('status', 'approved')
+            ->approved()
             ->sum('reward_amount');
 
         $available = $this->availableBalance($user->id, $totalEarned);
@@ -115,7 +115,10 @@ class TaskController extends Controller
             'proof' => ['required', 'file', 'image', 'max:5120'],
         ]);
 
-        return DB::transaction(function () use ($request, $user, $dailyTask, $plan) {
+        // Hash the uploaded file before it moves into storage.
+        $proofHash = hash_file('sha256', $request->file('proof')->getRealPath());
+
+        return DB::transaction(function () use ($request, $user, $dailyTask, $plan, $proofHash) {
             // Lock any existing submission row for this user/task so a
             // double-click or retried request can't create two rows or
             // race past the "already submitted" check.
@@ -131,12 +134,23 @@ class TaskController extends Controller
             $path = $request->file('proof')->store('task-proofs', 'public');
             $rewardAmount = $plan['dailyEarnings'];
 
+            $isDuplicate = TaskSubmission::duplicateProofFor(
+                $user->id,
+                $proofHash,
+                $existing?->id
+            )->exists();
+
+            $adminNote = $isDuplicate
+                ? 'Flagged: matches a previously submitted proof image.'
+                : null;
+
             if ($existing) {
                 $existing->update([
                     'proof_path' => $path,
+                    'proof_hash' => $proofHash,
                     'reward_amount' => $rewardAmount,
                     'status' => 'pending',
-                    'admin_note' => null,
+                    'admin_note' => $adminNote,
                     'reviewed_at' => null,
                     'reviewed_by' => null,
                 ]);
@@ -147,7 +161,9 @@ class TaskController extends Controller
                     'task_id' => $dailyTask->task_id,
                     'reward_amount' => $rewardAmount,
                     'proof_path' => $path,
+                    'proof_hash' => $proofHash,
                     'status' => 'pending',
+                    'admin_note' => $adminNote,
                 ]);
             }
 
@@ -182,7 +198,7 @@ class TaskController extends Controller
             // the transaction so a concurrent withdrawal request can't
             // read the same "available" balance before this one commits.
             $totalEarned = TaskSubmission::where('user_id', $user->id)
-                ->where('status', 'approved')
+                ->approved()
                 ->lockForUpdate()
                 ->sum('reward_amount');
 
@@ -211,8 +227,8 @@ class TaskController extends Controller
     /**
      * Task earnings still available to withdraw: total approved reward
      * amounts minus anything already pending, approved, processing, or
-     * paid out. Deliberately all-time rather than "this month only", so
-     * a partial or missed withdrawal one month still shows as owed later.
+     * paid out. Deliberately all-time (rolls over month to month) rather
+     * than reset at each month boundary.
      */
     private function availableBalance(int $userId, float $totalEarned): float
     {

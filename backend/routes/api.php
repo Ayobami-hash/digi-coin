@@ -11,7 +11,11 @@ use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\Admin\AdminTaskController;
 use App\Http\Controllers\BankController;
 use App\Http\Controllers\Admin\AdminWithdrawalController;
- 
+use App\Http\Controllers\PaystackWebhookController;
+
+// Paystack webhook — no auth, called directly by Paystack's servers.
+// Must stay outside all auth:sanctum groups.
+Route::post('/webhooks/paystack', [PaystackWebhookController::class, 'handle']);
 
 Route::get('/user', function (Request $request) {
     return $request->user();

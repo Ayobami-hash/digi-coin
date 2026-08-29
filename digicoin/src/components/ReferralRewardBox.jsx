@@ -42,7 +42,7 @@ export default function ReferralRewardBox() {
     return <div style={styles.card}><p style={styles.hint}>Loading referral rewards…</p></div>;
   }
 
-  const { plan, referralCount, totalEarned, withdrawUnlocked, minimumWithdrawal, lastWithdrawal } = status;
+  const { plan, referralCount, totalEarned, availableBalance, withdrawUnlocked, minimumWithdrawal, lastWithdrawal } = status;
   const referralsToUnlock = Math.max(0, 3 - referralCount);
   const withdrawalMeta = lastWithdrawal ? describeWithdrawalStatus(lastWithdrawal.status) : null;
 
@@ -58,6 +58,9 @@ export default function ReferralRewardBox() {
             <div>
               <div style={styles.score}>₦{totalEarned.toLocaleString()}</div>
               <div style={styles.scoreLabel}>Total referral earnings</div>
+              {availableBalance !== totalEarned && (
+                <div style={styles.availableNote}>₦{availableBalance.toLocaleString()} available to withdraw</div>
+              )}
             </div>
             <div style={styles.counter}>
               <UserPlus size={14} color="#63627A" />
@@ -101,7 +104,7 @@ export default function ReferralRewardBox() {
       {showModal && (
         <WithdrawModal
           title="Withdraw referral earnings"
-          maxAmount={totalEarned}
+          maxAmount={availableBalance}
           minAmount={minimumWithdrawal}
           onSubmit={handleWithdraw}
           onClose={() => setShowModal(false)}
@@ -124,6 +127,7 @@ const styles = {
   scoreRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
   score: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 28, fontWeight: 700, color: "#33346B" },
   scoreLabel: { fontSize: 12, color: "#63627A", marginTop: 2 },
+  availableNote: { fontSize: 12, color: "#2E9E5B", marginTop: 4, fontWeight: 600 },
   counter: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#63627A", background: "#E6E5F0", padding: "6px 10px", borderRadius: 8 },
   withdrawalNote: { fontSize: 13, marginTop: 10, fontWeight: 600 },
   error: { fontSize: 13, color: "#B5502F", marginTop: 10 },
