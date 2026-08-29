@@ -6,9 +6,16 @@ use App\Models\Referral;
 use App\Models\Withdrawal;
 use App\Support\Plans;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ReferralController extends Controller
 {
+    /**
+     * Statuses that count as "already spoken for" when calculating
+     * how much of a user's referral earnings are still withdrawable.
+     */
+    private const CLAIMED_STATUSES = ['pending', 'approved', 'processing', 'successful'];
+
     // GET /api/referrals — list this user's referral history
     public function index(Request $request)
     {
@@ -29,6 +36,7 @@ class ReferralController extends Controller
 
         $count = Referral::where('referrer_id', $user->id)->count();
         $totalEarned = Referral::where('referrer_id', $user->id)->sum('bonus_amount');
+        $available = $this->availableBalance($user->id, $totalEarned);
 
         $lastWithdrawal = Withdrawal::where('user_id', $user->id)
             ->where('type', 'referral')
@@ -39,6 +47,7 @@ class ReferralController extends Controller
             'plan' => $plan,
             'referralCount' => $count,
             'totalEarned' => (float) $totalEarned,
+            'availableBalance' => (float) $available,
             'withdrawUnlocked' => $count >= 3 && !is_null($plan),
             'minimumWithdrawal' => $plan['referralMinWithdrawal'] ?? null,
             'lastWithdrawal' => $lastWithdrawal,
@@ -46,6 +55,14 @@ class ReferralController extends Controller
     }
 
     // POST /api/referrals  { referred_name }
+    //
+    // WARNING: this endpoint currently trusts the caller completely — any
+    // authenticated user can hit it with an arbitrary referred_name and mint
+    // themselves a bonus. This should not be a user-trigger endpoint;
+    // it belongs in the server-side registration/signup flow, fired only
+    // when a new user actually completes signup via a valid referral code.
+    // Flagging this here rather than silently "fixing" it since removing/
+    // moving it affects your routes and registration logic.
     public function store(Request $request)
     {
         $user = $request->user();
@@ -83,7 +100,7 @@ class ReferralController extends Controller
             return response()->json(['message' => 'You need at least 3 referrals to withdraw.'], 422);
         }
 
-        $minWithdrawal = $plan['referralMinWithdrawal'];
+        $minWithdrawal = $plan['referralMinWithdrawal'] ?? 0.01;
 
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:' . $minWithdrawal],
@@ -92,22 +109,47 @@ class ReferralController extends Controller
             'bank_account_number' => ['required', 'string', 'max:50'],
         ]);
 
-        $totalEarned = Referral::where('referrer_id', $user->id)->sum('bonus_amount');
+        return DB::transaction(function () use ($user, $data) {
+            // Lock this user's referral rows for the duration of the
+            // transaction so a concurrent withdrawal request can't read
+            // the same "available" balance before this one commits.
+            $totalEarned = Referral::where('referrer_id', $user->id)
+                ->lockForUpdate()
+                ->sum('bonus_amount');
 
-        if ($data['amount'] > $totalEarned) {
-            return response()->json(['message' => 'Withdrawal amount exceeds your available referral earnings.'], 422);
-        }
+            $available = $this->availableBalance($user->id, $totalEarned);
 
-        $withdrawal = Withdrawal::create([
-            'user_id' => $user->id,
-            'type' => 'referral',
-            'amount' => $data['amount'],
-            'bank_name' => $data['bank_name'],
-            'bank_code' => $data['bank_code'],
-            'bank_account_number' => $data['bank_account_number'],
-            'status' => 'pending',
-        ]);
+            if ($data['amount'] > $available) {
+                return response()->json([
+                    'message' => 'Withdrawal amount exceeds your available referral balance.',
+                ], 422);
+            }
 
-        return response()->json(['withdrawal' => $withdrawal]);
+            $withdrawal = Withdrawal::create([
+                'user_id' => $user->id,
+                'type' => 'referral',
+                'amount' => $data['amount'],
+                'bank_name' => $data['bank_name'],
+                'bank_code' => $data['bank_code'],
+                'bank_account_number' => $data['bank_account_number'],
+                'status' => 'pending',
+            ]);
+
+            return response()->json(['withdrawal' => $withdrawal]);
+        });
+    }
+
+    /**
+     * Referral earnings still available to withdraw: total bonuses earned
+     * minus anything already pending, approved, processing, or paid out.
+     */
+    private function availableBalance(int $userId, float $totalEarned): float
+    {
+        $alreadyClaimed = Withdrawal::where('user_id', $userId)
+            ->where('type', 'referral')
+            ->whereIn('status', self::CLAIMED_STATUSES)
+            ->sum('amount');
+
+        return max(0, $totalEarned - $alreadyClaimed);
     }
 }
