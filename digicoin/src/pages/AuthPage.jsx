@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Coins, Mail, Lock, User as UserIcon, Gift } from "lucide-react";
+import { Coins, Mail, Lock, User as UserIcon, Gift, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { googleLoginUrl } from "../lib/api";
 
@@ -7,24 +7,33 @@ export default function AuthPage() {
   const { login, register, error, setError } = useAuth();
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [submitting, setSubmitting] = useState(false);
+  const [refFromLink, setRefFromLink] = useState(false);
   const [form, setForm] = useState({
     name: "", email: "", password: "", password_confirmation: "", referral_code: "",
   });
 
   // If the link has ?ref=<id>, prefill it and jump straight to the
   // register tab — someone arriving via a referral link almost
-  // certainly wants to sign up, not log in.
+  // certainly wants to sign up, not log in. Lock the field so it
+  // can't be accidentally overwritten; they can still clear it
+  // manually if it's not actually them.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
     if (ref) {
       setForm((f) => ({ ...f, referral_code: ref }));
+      setRefFromLink(true);
       setMode("register");
     }
   }, []);
 
   function update(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  }
+
+  function clearLinkedReferral() {
+    setForm((f) => ({ ...f, referral_code: "" }));
+    setRefFromLink(false);
   }
 
   async function handleSubmit(e) {
@@ -84,8 +93,14 @@ export default function AuthPage() {
         }
         .dc-input:focus { border-color: #33346B; }
         .dc-input::placeholder { color: #8C8B99; }
+        .dc-input:read-only { background: #E6E5F0; color: #63627A; cursor: default; }
         .dc-field { position: relative; margin-bottom: 12px; }
         .dc-field svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #8C8B99; }
+        .dc-field-clear {
+          position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+          background: none; border: none; cursor: pointer; color: #8C8B99; padding: 4px; display: flex;
+        }
+        .dc-field-clear:hover { color: #B5502F; }
       `}</style>
 
       <div style={styles.card}>
@@ -99,7 +114,7 @@ export default function AuthPage() {
           {mode === "login" ? "Sign in to keep farming your referrals." : "Set up your wallet in a few seconds."}
         </p>
 
-        {mode === "register" && form.referral_code && (
+        {mode === "register" && form.referral_code && refFromLink && (
           <div style={styles.referralBanner}>
             <Gift size={15} color="#33346B" />
             <span>You were invited by referral code <strong>{form.referral_code}</strong></span>
@@ -150,7 +165,19 @@ export default function AuthPage() {
                   placeholder="Referral code (optional)"
                   value={form.referral_code}
                   onChange={update("referral_code")}
+                  readOnly={refFromLink}
+                  style={refFromLink ? { paddingRight: 34 } : undefined}
                 />
+                {refFromLink && (
+                  <button
+                    type="button"
+                    className="dc-field-clear"
+                    onClick={clearLinkedReferral}
+                    title="Not you? Clear referral code"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             </>
           )}

@@ -9,6 +9,7 @@ use App\Support\Plans;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
@@ -33,14 +34,39 @@ class AuthController extends Controller
         // If a valid referral code was supplied, credit the referrer —
         // only if the referrer has an active plan (referral bonuses are
         // plan-dependent, same rule as manually recorded referrals).
+        //
+        // Every outcome (credited, skipped, referrer missing) is logged
+        // so a "my referral didn't show up" report can be diagnosed from
+        // storage/logs/laravel.log instead of guessing blind.
         if (!empty($data['referral_code'])) {
             $referrer = User::find($data['referral_code']);
-            if ($referrer) {
+
+            if (!$referrer) {
+                // Shouldn't happen given the exists:users,id rule, but
+                // logged defensively in case that ever changes.
+                Log::warning('Referral signup: referrer not found', [
+                    'referral_code' => $data['referral_code'],
+                    'new_user_id' => $user->id,
+                ]);
+            } else {
                 $plan = Plans::find($referrer->current_plan);
-                if ($plan) {
+
+                if (!$plan) {
+                    Log::warning('Referral bonus skipped: referrer has no active plan', [
+                        'referrer_id' => $referrer->id,
+                        'referrer_current_plan' => $referrer->current_plan,
+                        'new_user_id' => $user->id,
+                    ]);
+                } else {
                     Referral::create([
                         'referrer_id' => $referrer->id,
                         'referred_name' => $user->name,
+                        'bonus_amount' => $plan['referralBonus'],
+                    ]);
+
+                    Log::info('Referral bonus credited', [
+                        'referrer_id' => $referrer->id,
+                        'new_user_id' => $user->id,
                         'bonus_amount' => $plan['referralBonus'],
                     ]);
                 }

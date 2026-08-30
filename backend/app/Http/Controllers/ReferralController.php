@@ -72,37 +72,6 @@ class ReferralController extends Controller
         ]);
     }
 
-    // POST /api/referrals  { referred_name }
-    //
-    // WARNING: this endpoint currently trusts the caller completely — any
-    // authenticated user can hit it with an arbitrary referred_name and mint
-    // themselves a bonus. This should not be a user-trigger endpoint;
-    // it belongs in the server-side registration/signup flow, fired only
-    // when a new user actually completes signup via a valid referral code.
-    // Flagging this here rather than silently "fixing" it since removing/
-    // moving it affects your routes and registration logic.
-    public function store(Request $request)
-    {
-        $user = $request->user();
-        $plan = Plans::find($user->current_plan);
-
-        if (!$plan) {
-            return response()->json(['message' => 'You need an active plan to earn referral bonuses.'], 422);
-        }
-
-        $data = $request->validate([
-            'referred_name' => ['required', 'string', 'max:255'],
-        ]);
-
-        Referral::create([
-            'referrer_id' => $user->id,
-            'referred_name' => $data['referred_name'],
-            'bonus_amount' => $plan['referralBonus'],
-        ]);
-
-        return $this->status($request);
-    }
-
     // POST /api/referrals/withdraw
     public function withdraw(Request $request)
     {
