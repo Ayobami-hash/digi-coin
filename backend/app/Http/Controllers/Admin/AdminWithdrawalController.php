@@ -88,6 +88,56 @@ class AdminWithdrawalController extends Controller
         return $this->attemptTransfer($locked);
     }
 
+    // POST /api/admin/withdrawals/{withdrawal}/mark-paid-manually   { reference?, note? }
+    // Use this when the admin has sent the money themselves outside of
+    // Paystack/Monnify (e.g. a manual bank/OPay transfer from a personal
+    // or business banking app) instead of relying on the payout API.
+    // Skips the transfer API entirely and just records the withdrawal as
+    // completed, with an optional reference (e.g. bank transaction ID or
+    // screenshot filename) for the admin's own audit trail.
+    //
+    // Allowed from 'pending', 'approved', or 'failed' — i.e. any state
+    // where the money hasn't already been confirmed as sent through the
+    // automated flow. This intentionally does NOT touch
+    // paystack_transfer_code/reference fields, since no API transfer was
+    // actually made.
+    public function markPaidManually(Request $request, Withdrawal $withdrawal)
+    {
+        $admin = $request->user();
+
+        $data = $request->validate([
+            'reference' => ['nullable', 'string', 'max:255'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        return DB::transaction(function () use ($withdrawal, $admin, $data) {
+            $locked = Withdrawal::where('id', $withdrawal->id)->lockForUpdate()->first();
+
+            if (! in_array($locked->status, ['pending', 'approved', 'failed'], true)) {
+                return response()->json([
+                    'message' => 'Only pending, approved, or failed withdrawals can be marked as paid manually.',
+                ], 422);
+            }
+
+            $noteParts = array_filter([
+                'Paid manually by admin.',
+                $data['reference'] ?? null ? 'Ref: ' . $data['reference'] : null,
+                $data['note'] ?? null,
+            ]);
+
+            $locked->update([
+                'status' => 'successful',
+                'admin_note' => implode(' ', $noteParts),
+                'reviewed_at' => $locked->reviewed_at ?? now(),
+                'reviewed_by' => $locked->reviewed_by ?? $admin->id,
+                'paid_manually' => true,
+                'manual_payment_reference' => $data['reference'] ?? null,
+            ]);
+
+            return response()->json(['withdrawal' => $locked->fresh()]);
+        });
+    }
+
     // POST /api/admin/withdrawals/{withdrawal}/finalize-otp   { otp }
     // Called when a prior approve/pay attempt returned 'otp_required'.
     // Submits the OTP Paystack sent to your business phone/email to

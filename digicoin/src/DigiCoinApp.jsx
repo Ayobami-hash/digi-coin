@@ -31,6 +31,9 @@ export default function DigiCoinApp() {
   // Lightweight summary numbers for the header stats row — the
   // TaskRewardBox/ReferralRewardBox/ReferralListSection components below
   // fetch their own detailed data independently.
+  // NOTE: these track each source's *available* (withdrawable) balance,
+  // not lifetime earnings — lifetime totals would double-count money
+  // that's already been withdrawn.
   const [monthTaskTotal, setMonthTaskTotal] = useState(0);
   const [referralCount, setReferralCount] = useState(0);
   const [referralTotal, setReferralTotal] = useState(0);
@@ -41,9 +44,9 @@ export default function DigiCoinApp() {
         fetchTaskStatus(),
         fetchReferralStatus(),
       ]);
-      setMonthTaskTotal(taskStatus.monthTotal || 0);
+      setMonthTaskTotal(taskStatus.availableBalance || 0);
       setReferralCount(referralStatus.referralCount || 0);
-      setReferralTotal(referralStatus.totalEarned || 0);
+      setReferralTotal(referralStatus.availableBalance || 0);
     } catch (err) {
       console.error("Error loading reward summary:", err);
     }

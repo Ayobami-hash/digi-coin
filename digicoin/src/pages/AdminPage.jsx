@@ -4,6 +4,7 @@ import {
   fetchPendingSubmissions, approveSubmission, rejectSubmission,
   fetchAdminTasks, createAdminTask, updateAdminTask, deleteAdminTask,
   fetchAdminWithdrawals, approveWithdrawal, rejectWithdrawal, payWithdrawal, finalizeWithdrawalOtp,
+  markWithdrawalPaidManually,
 } from "../lib/rewardsApi";
 
 export default function AdminPage({ onBack }) {
@@ -394,6 +395,9 @@ function WithdrawalsPanel() {
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
   const [otpInputs, setOtpInputs] = useState({});
+  const [manualPayId, setManualPayId] = useState(null);
+  const [manualPayRef, setManualPayRef] = useState("");
+  const [manualPayNote, setManualPayNote] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
 
@@ -467,6 +471,22 @@ function WithdrawalsPanel() {
       load();
     } catch (e) {
       setError(e.response?.data?.message || "OTP finalization failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleMarkPaidManually(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      await markWithdrawalPaidManually(id, { reference: manualPayRef, note: manualPayNote });
+      setManualPayId(null);
+      setManualPayRef("");
+      setManualPayNote("");
+      load();
+    } catch (e) {
+      setError(e.response?.data?.message || "Could not mark as paid");
     } finally {
       setBusyId(null);
     }
@@ -552,6 +572,23 @@ function WithdrawalsPanel() {
                       />
                     </div>
                   )}
+
+                  {manualPayId === w.id && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <input
+                        className="dc-input"
+                        placeholder="Transfer reference (optional)"
+                        value={manualPayRef}
+                        onChange={(e) => setManualPayRef(e.target.value)}
+                      />
+                      <input
+                        className="dc-input"
+                        placeholder="Note (optional)"
+                        value={manualPayNote}
+                        onChange={(e) => setManualPayNote(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", gap: 6, flexDirection: "column" }}>
@@ -581,6 +618,23 @@ function WithdrawalsPanel() {
                     <button className="dc-btn" onClick={() => handlePay(w.id)} disabled={busyId === w.id} style={{ background: "#33346B", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                       <Landmark size={14} /> {busyId === w.id ? "Retrying…" : "Retry transfer"}
                     </button>
+                  )}
+
+                  {["pending", "approved", "failed"].includes(w.status) && manualPayId !== w.id && (
+                    <button className="dc-btn" onClick={() => setManualPayId(w.id)} disabled={busyId === w.id} style={{ background: "#E6E5F0", color: "#33346B", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <Check size={14} /> Mark as paid manually
+                    </button>
+                  )}
+
+                  {manualPayId === w.id && (
+                    <>
+                      <button className="dc-btn" onClick={() => handleMarkPaidManually(w.id)} disabled={busyId === w.id} style={{ background: "#2E9E5B", color: "#fff" }}>
+                        {busyId === w.id ? "Saving…" : "Confirm paid"}
+                      </button>
+                      <button className="dc-btn" onClick={() => { setManualPayId(null); setManualPayRef(""); setManualPayNote(""); }} style={{ background: "#E1E0EA", color: "#33346B" }}>
+                        Cancel
+                      </button>
+                    </>
                   )}
 
                   {w.status === "otp_required" && (

@@ -70,7 +70,7 @@ export default function TaskRewardBox() {
     return <div style={styles.card}><p style={styles.hint}>Loading task rewards…</p></div>;
   }
 
-  const { plan, task, submission, monthTotal, daysLeftInMonth, withdrawUnlocked, lastWithdrawal } = status;
+  const { plan, task, submission, monthTotal, availableBalance, daysLeftInMonth, withdrawUnlocked, lastWithdrawal } = status;
   const meta = submission ? STATUS_META[submission.status] : null;
   const StatusIcon = meta?.icon;
   const canSubmit = !submission || submission.status === "rejected";
@@ -90,6 +90,9 @@ export default function TaskRewardBox() {
             <div>
               <div style={styles.score}>₦{monthTotal.toLocaleString()}</div>
               <div style={styles.scoreLabel}>This month's approved earnings</div>
+              {availableBalance !== monthTotal && (
+                <div style={styles.availableNote}>₦{availableBalance.toLocaleString()} available to withdraw</div>
+              )}
             </div>
             <div style={styles.countdown}>
               <Clock size={14} color="#63627A" />
@@ -175,7 +178,7 @@ export default function TaskRewardBox() {
       {showModal && (
         <WithdrawModal
           title="Withdraw task earnings"
-          maxAmount={monthTotal}
+          maxAmount={availableBalance}
           minAmount={undefined}
           onSubmit={handleWithdraw}
           onClose={() => setShowModal(false)}
@@ -197,6 +200,7 @@ const styles = {
   scoreRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
   score: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 28, fontWeight: 700, color: "#33346B" },
   scoreLabel: { fontSize: 12, color: "#63627A", marginTop: 2 },
+  availableNote: { fontSize: 12, color: "#2E9E5B", marginTop: 4, fontWeight: 600 },
   countdown: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#63627A", background: "#E6E5F0", padding: "6px 10px", borderRadius: 8 },
   taskBox: { background: "#E6E5F0", border: "1px solid #DEDDE8", borderRadius: 10, padding: "14px 16px", marginTop: 16 },
   taskHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 },

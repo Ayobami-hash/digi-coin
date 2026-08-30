@@ -38,8 +38,26 @@ class ReferralController extends Controller
         $totalEarned = Referral::where('referrer_id', $user->id)->sum('bonus_amount');
         $available = $this->availableBalance($user->id, $totalEarned);
 
+        // Priority-aware "last withdrawal" pick:
+        //   Tier 0 — still in progress (pending/approved/processing/otp_required):
+        //            always shown first, since these need the user's attention now.
+        //   Tier 1 — successful: wins over any rejected/failed withdrawal,
+        //            even an older one, so a manual payout isn't hidden by
+        //            a later unrelated rejection.
+        //   Tier 2 — rejected/failed: shown only if nothing above exists.
+        // Within a tier, the most recent one (by created_at) wins.
         $lastWithdrawal = Withdrawal::where('user_id', $user->id)
             ->where('type', 'referral')
+            ->orderByRaw("
+                CASE status
+                    WHEN 'pending' THEN 0
+                    WHEN 'approved' THEN 0
+                    WHEN 'processing' THEN 0
+                    WHEN 'otp_required' THEN 0
+                    WHEN 'successful' THEN 1
+                    ELSE 2
+                END ASC
+            ")
             ->latest()
             ->first();
 

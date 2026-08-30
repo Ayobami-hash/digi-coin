@@ -66,8 +66,23 @@ class TaskController extends Controller
         $daysLeft = $daysInMonth - $today->day;
         $isPayDay = $today->day === $daysInMonth;
 
+        // Priority-aware "last withdrawal" pick — same logic as referrals:
+        //   Tier 0 — still in progress (pending/approved/processing/otp_required)
+        //   Tier 1 — successful (wins over an older/unrelated rejected or failed one)
+        //   Tier 2 — rejected/failed
+        // Within a tier, the most recent one (by created_at) wins.
         $lastWithdrawal = Withdrawal::where('user_id', $user->id)
             ->where('type', 'task')
+            ->orderByRaw("
+                CASE status
+                    WHEN 'pending' THEN 0
+                    WHEN 'approved' THEN 0
+                    WHEN 'processing' THEN 0
+                    WHEN 'otp_required' THEN 0
+                    WHEN 'successful' THEN 1
+                    ELSE 2
+                END ASC
+            ")
             ->latest()
             ->first();
 

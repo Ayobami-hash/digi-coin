@@ -133,3 +133,13 @@ export async function finalizeWithdrawalOtp(id, otp) {
   const { data } = await api.post(`/api/admin/withdrawals/${id}/finalize-otp`, { otp });
   return data.withdrawal;
 }
+
+// Records a withdrawal as paid via a manual bank/OPay transfer the admin
+// sent themselves, bypassing the Paystack/Monnify transfer API entirely.
+// `reference` and `note` are both optional — useful for keeping the bank
+// transaction ID or a short explanation on the withdrawal's admin_note
+// for later reconciliation.
+export async function markWithdrawalPaidManually(id, { reference, note } = {}) {
+  const { data } = await api.post(`/api/admin/withdrawals/${id}/mark-paid-manually`, { reference, note });
+  return data.withdrawal;
+}

@@ -44,6 +44,8 @@ export default function ReferralRewardBox() {
 
   const { plan, referralCount, totalEarned, availableBalance, withdrawUnlocked, minimumWithdrawal, lastWithdrawal } = status;
   const referralsToUnlock = Math.max(0, 3 - referralCount);
+  const meetsMinimum = availableBalance >= (minimumWithdrawal || 0);
+  const canWithdraw = withdrawUnlocked && meetsMinimum;
   const withdrawalMeta = lastWithdrawal ? describeWithdrawalStatus(lastWithdrawal.status) : null;
 
   return (
@@ -56,10 +58,10 @@ export default function ReferralRewardBox() {
         <>
           <div style={styles.scoreRow}>
             <div>
-              <div style={styles.score}>₦{totalEarned.toLocaleString()}</div>
-              <div style={styles.scoreLabel}>Total referral earnings</div>
-              {availableBalance !== totalEarned && (
-                <div style={styles.availableNote}>₦{availableBalance.toLocaleString()} available to withdraw</div>
+              <div style={styles.score}>₦{availableBalance.toLocaleString()}</div>
+              <div style={styles.scoreLabel}>Available to withdraw</div>
+              {totalEarned !== availableBalance && (
+                <div style={styles.totalNote}>₦{totalEarned.toLocaleString()} total earned</div>
               )}
             </div>
             <div style={styles.counter}>
@@ -74,20 +76,31 @@ export default function ReferralRewardBox() {
             </p>
           )}
 
+          {withdrawUnlocked && !meetsMinimum && (
+            <p style={styles.hint2}>
+              You need at least ₦{minimumWithdrawal?.toLocaleString()} available to withdraw
+              {availableBalance > 0 ? ` (currently ₦${availableBalance.toLocaleString()}).` : "."}
+            </p>
+          )}
+
           <button
             className="dc-btn"
-            onClick={() => withdrawUnlocked && setShowModal(true)}
-            disabled={!withdrawUnlocked}
+            onClick={() => canWithdraw && setShowModal(true)}
+            disabled={!canWithdraw}
             style={{
               width: "100%", marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              background: withdrawUnlocked ? "#2E9E5B" : "#B5502F",
+              background: canWithdraw ? "#2E9E5B" : "#B5502F",
               color: "#FFFFFF",
-              cursor: withdrawUnlocked ? "pointer" : "not-allowed",
-              opacity: withdrawUnlocked ? 1 : 0.85,
+              cursor: canWithdraw ? "pointer" : "not-allowed",
+              opacity: canWithdraw ? 1 : 0.85,
             }}
           >
-            {withdrawUnlocked ? <Unlock size={15} /> : <Lock size={15} />}
-            {withdrawUnlocked ? "Withdraw earnings" : "Withdraw locked (min. 3 referrals)"}
+            {canWithdraw ? <Unlock size={15} /> : <Lock size={15} />}
+            {!withdrawUnlocked
+              ? "Withdraw locked (min. 3 referrals)"
+              : !meetsMinimum
+                ? `Withdraw locked (min. ₦${minimumWithdrawal?.toLocaleString()})`
+                : "Withdraw earnings"}
           </button>
 
           {lastWithdrawal && (
@@ -127,7 +140,7 @@ const styles = {
   scoreRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
   score: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 28, fontWeight: 700, color: "#33346B" },
   scoreLabel: { fontSize: 12, color: "#63627A", marginTop: 2 },
-  availableNote: { fontSize: 12, color: "#2E9E5B", marginTop: 4, fontWeight: 600 },
+  totalNote: { fontSize: 12, color: "#8C8B99", marginTop: 4 },
   counter: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#63627A", background: "#E6E5F0", padding: "6px 10px", borderRadius: 8 },
   withdrawalNote: { fontSize: 13, marginTop: 10, fontWeight: 600 },
   error: { fontSize: 13, color: "#B5502F", marginTop: 10 },

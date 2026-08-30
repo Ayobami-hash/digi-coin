@@ -11,7 +11,7 @@ export function describeWithdrawalStatus(status) {
     case "successful":
       return { label: "Withdrawal successful", color: "#1E5631" };
     case "rejected":
-      return { label: "Withdrawal processing", color: "#B5502F" };
+      return { label: "Withdrawal rejected", color: "#B5502F" };
     case "failed":
       return { label: "Withdrawal failed — contact support", color: "#B5502F" };
     default:

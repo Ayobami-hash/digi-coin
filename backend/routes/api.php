@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/task-submissions/{submission}/reject', [AdminTaskController::class, 'reject']);
 
         Route::get('/withdrawals', [AdminWithdrawalController::class, 'index']);
+        Route::post('/withdrawals/{withdrawal}/mark-paid-manually', [AdminWithdrawalController::class, 'markPaidManually']);
         Route::post('/withdrawals/{withdrawal}/approve', [AdminWithdrawalController::class, 'approve']);
         Route::post('/withdrawals/{withdrawal}/reject', [AdminWithdrawalController::class, 'reject']);
         Route::post('/withdrawals/{withdrawal}/pay', [AdminWithdrawalController::class, 'pay']);
