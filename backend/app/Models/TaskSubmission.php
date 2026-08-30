@@ -21,6 +21,30 @@ class TaskSubmission extends Model
         'reviewed_at' => 'datetime',
     ];
 
+    // Ensures proof_url is automatically included whenever this model
+    // (or a collection of them) is converted to an array/JSON response —
+    // no controller changes needed for it to show up in the API output.
+    protected $appends = ['proof_url'];
+
+    /**
+     * Full, absolute URL for the submitted proof screenshot, built from
+     * the stored relative path. Uses asset() (not Storage::url()) so the
+     * result includes the app's scheme + host + port from APP_URL —
+     * important when the frontend and backend run on different origins
+     * (e.g. Vite dev server on :5173, Laravel on :8000), since a
+     * host-relative URL would otherwise resolve against the frontend's
+     * origin instead of the backend's. Returns null if no proof was
+     * submitted, so the frontend can handle that case gracefully.
+     */
+    public function getProofUrlAttribute(): ?string
+    {
+        if (!$this->proof_path) {
+            return null;
+        }
+
+        return asset('storage/' . $this->proof_path);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

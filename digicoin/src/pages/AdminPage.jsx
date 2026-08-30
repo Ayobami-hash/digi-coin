@@ -159,7 +159,7 @@ function SubmissionsPanel({ onImageClick }) {
               <div style={styles.subBody}>
                 <p style={styles.subUser}>{s.user?.name} <span style={styles.subEmail}>({s.user?.email})</span></p>
                 <p style={styles.subTask}>{s.task?.title} — ₦{Number(s.reward_amount).toLocaleString()}</p>
-                <p style={styles.subDate}>{new Date(s.submitted_at).toLocaleString()}</p>
+                <p style={styles.subDate}>{new Date(s.created_at).toLocaleString()}</p>
 
                 {rejectingId === s.id ? (
                   <div style={{ marginTop: 10 }}>
