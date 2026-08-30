@@ -23,13 +23,17 @@ class AdminTaskController extends Controller
     }
 
     // POST /api/admin/tasks
+    // NOTE: reward_amount is now optional. Rewards are computed from each
+    // user's active plan (daily earnings) at the time they submit, not set
+    // per task. This field is kept nullable for backward compatibility with
+    // older tasks/rows that may still reference it.
     public function storeTask(Request $request)
     {
         $data = $request->validate([
             'title'         => ['required', 'string', 'max:255'],
             'description'   => ['nullable', 'string', 'max:2000'],
             'link'          => ['nullable', 'url', 'max:2048'],
-            'reward_amount' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
+            'reward_amount' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'is_active'     => ['sometimes', 'boolean'],
         ]);
 
@@ -47,7 +51,7 @@ class AdminTaskController extends Controller
             'title'         => ['sometimes', 'required', 'string', 'max:255'],
             'description'   => ['nullable', 'string', 'max:2000'],
             'link'          => ['nullable', 'url', 'max:2048'],
-            'reward_amount' => ['sometimes', 'required', 'numeric', 'min:0', 'max:9999999999.99'],
+            'reward_amount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'is_active'     => ['sometimes', 'boolean'],
         ]);
 
