@@ -43,6 +43,7 @@ class GoogleController extends Controller
                 'avatar' => $googleUser->getAvatar(),
                 'password' => null,
                 'email_verified_at' => now(),
+                'referral_code' => User::generateReferralCode(),
             ]);
         }
 
