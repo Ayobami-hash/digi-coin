@@ -20,14 +20,16 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::min(8)],
-            // Referral code is just the referrer's user ID for now — optional.
-            'referral_code' => ['nullable', 'integer', 'exists:users,id'],
+            // Referral code is now a real generated code (see User::generateReferralCode()),
+            // not a raw user ID — optional.
+            'referral_code' => ['nullable', 'string', 'exists:users,referral_code'],
         ]);
 
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
+            'referral_code' => User::generateReferralCode(),
         ]);
 
         // If a valid referral code was supplied, credit the referrer —
@@ -38,11 +40,11 @@ class AuthController extends Controller
         // so a "my referral didn't show up" report can be diagnosed from
         // storage/logs/laravel.log instead of guessing blind.
         if (!empty($data['referral_code'])) {
-            $referrer = User::find($data['referral_code']);
+            $referrer = User::where('referral_code', $data['referral_code'])->first();
 
             if (!$referrer) {
-                // Shouldn't happen given the exists:users,id rule, but
-                // logged defensively in case that ever changes.
+                // Shouldn't happen given the exists:users,referral_code rule,
+                // but logged defensively in case that ever changes.
                 Log::warning('Referral signup: referrer not found', [
                     'referral_code' => $data['referral_code'],
                     'new_user_id' => $user->id,
