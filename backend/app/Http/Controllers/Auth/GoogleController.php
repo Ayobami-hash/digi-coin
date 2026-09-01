@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 
@@ -47,10 +46,15 @@ class GoogleController extends Controller
             ]);
         }
 
-        Auth::login($user, true);
-        $request->session()->regenerate();
+        $token = $user->createToken('spa-token')->plainTextToken;
 
-        // Send the user back to the SPA
-        return redirect(config('app.frontend_url') . '/auth/callback');
+        // Send the user back to the SPA with the token in the URL.
+        // The frontend's /auth/callback route reads this param, stores
+        // the token, then immediately strips it from the visible URL
+        // (e.g. via history.replaceState) so it doesn't linger in
+        // browser history or get shared accidentally.
+        return redirect(
+            config('app.frontend_url') . '/auth/callback?token=' . urlencode($token)
+        );
     }
 }

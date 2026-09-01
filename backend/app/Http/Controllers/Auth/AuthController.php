@@ -7,7 +7,6 @@ use App\Models\Referral;
 use App\Models\User;
 use App\Support\Plans;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Password;
@@ -73,10 +72,9 @@ class AuthController extends Controller
             }
         }
 
-        Auth::login($user);
-        $request->session()->regenerate();
+        $token = $user->createToken('spa-token')->plainTextToken;
 
-        return response()->json(['user' => $user]);
+        return response()->json(['user' => $user, 'token' => $token]);
     }
 
     // POST /api/auth/login
@@ -96,24 +94,21 @@ class AuthController extends Controller
             ], 422);
         }
 
-        if (! Auth::attempt($credentials)) {
+        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             return response()->json([
                 'message' => 'These credentials do not match our records.',
             ], 422);
         }
 
-        $request->session()->regenerate();
+        $token = $user->createToken('spa-token')->plainTextToken;
 
-        return response()->json(['user' => Auth::user()]);
+        return response()->json(['user' => $user, 'token' => $token]);
     }
 
     // POST /api/auth/logout
     public function logout(Request $request)
     {
-        Auth::guard('web')->logout();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        $request->user()->currentAccessToken()->delete();
 
         return response()->json(['message' => 'Logged out']);
     }

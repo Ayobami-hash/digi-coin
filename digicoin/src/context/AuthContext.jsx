@@ -9,11 +9,23 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState("");
 
   const loadUser = useCallback(async () => {
+    const token = localStorage.getItem("auth_token");
+
+    // No token stored — skip the /me call entirely, nothing to validate.
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const u = await fetchCurrentUser();
       setUser(u);
     } catch (e) {
-      setUser(null); // 401 = not logged in, this is expected
+      // Token is invalid/expired/revoked — clear it so we don't keep
+      // sending a dead token on every subsequent request.
+      localStorage.removeItem("auth_token");
+      setUser(null);
     } finally {
       setLoading(false);
     }

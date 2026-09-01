@@ -1,11 +1,21 @@
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AuthPage from "./pages/AuthPage";
+import AuthCallback from "./pages/AuthCallback";
 import DigiCoinApp from "./DigiCoinApp";
 import AdminPage from "./pages/AdminPage";
 
 function Gate() {
   const { user, loading } = useAuth();
-  const isAdminPath = window.location.pathname === "/admin";
+  const pathname = window.location.pathname;
+  const isAdminPath = pathname === "/admin";
+  const isAuthCallbackPath = pathname === "/auth/callback";
+
+  // Google OAuth redirects here with ?token=... — handle this before the
+  // loading/user checks below, since AuthCallback needs to run even
+  // while the AuthProvider's initial /me check may still be settling.
+  if (isAuthCallbackPath) {
+    return <AuthCallback />;
+  }
 
   if (loading) {
     return (

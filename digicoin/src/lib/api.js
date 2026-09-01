@@ -4,33 +4,49 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export const api = axios.create({
   baseURL: API_BASE,
-  withCredentials: true,
-  withXSRFToken: true, // send XSRF-TOKEN cookie as header even cross-origin
   headers: { "X-Requested-With": "XMLHttpRequest" },
 });
 
-// Sanctum SPA auth requires a CSRF cookie before any state-changing request
-export async function ensureCsrfCookie() {
-  await api.get("/sanctum/csrf-cookie");
-}
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("auth_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Auto-logout if a token expires/gets revoked server-side
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("auth_token");
+    }
+    return Promise.reject(error);
+  }
+);
 
 export async function registerUser({ name, email, password, password_confirmation, referral_code }) {
-  await ensureCsrfCookie();
   const { data } = await api.post("/api/auth/register", {
     name, email, password, password_confirmation,
-    referral_code: referral_code || undefined, // omit entirely if blank
+    referral_code: referral_code || undefined,
   });
+  localStorage.setItem("auth_token", data.token);
   return data.user;
 }
 
 export async function loginUser({ email, password }) {
-  await ensureCsrfCookie();
   const { data } = await api.post("/api/auth/login", { email, password });
+  localStorage.setItem("auth_token", data.token);
   return data.user;
 }
 
 export async function logoutUser() {
-  await api.post("/api/auth/logout");
+  try {
+    await api.post("/api/auth/logout");
+  } finally {
+    localStorage.removeItem("auth_token");
+  }
 }
 
 export async function fetchCurrentUser() {
