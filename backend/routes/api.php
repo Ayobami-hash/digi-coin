@@ -11,6 +11,7 @@ use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\Admin\AdminTaskController;
 use App\Http\Controllers\BankController;
 use App\Http\Controllers\Admin\AdminWithdrawalController;
+use App\Http\Controllers\Admin\AdminReconcileController;
 use App\Http\Controllers\PaystackWebhookController;
 
 // Paystack webhook — no auth, called directly by Paystack's servers.
@@ -61,6 +62,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/withdrawals/{withdrawal}/reject', [AdminWithdrawalController::class, 'reject']);
         Route::post('/withdrawals/{withdrawal}/pay', [AdminWithdrawalController::class, 'pay']);
         Route::post('/withdrawals/{withdrawal}/finalize-otp', [AdminWithdrawalController::class, 'finalizeOtp']);
+
+        // TEMPORARY — remove after reconciling stuck Paystack payments.
+        // Dry-run: GET this URL as-is to preview what it would change.
+        // Apply:   GET the same URL with ?confirm=1 appended.
+        Route::get('/reconcile-payment/{reference}', [AdminReconcileController::class, 'handle']);
     });
 
     Route::get('/referrals/status', [ReferralController::class, 'status']);
