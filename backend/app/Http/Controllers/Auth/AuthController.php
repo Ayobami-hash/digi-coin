@@ -32,11 +32,13 @@ class AuthController extends Controller
             'referral_code' => User::generateReferralCode(),
         ]);
 
-        // If a valid referral code was supplied, credit the referrer —
-        // only if the referrer has an active plan (referral bonuses are
-        // plan-dependent, same rule as manually recorded referrals).
+        // If a valid referral code was supplied, just record who referred
+        // this user — do NOT pay out a bonus yet. The bonus is only
+        // credited once this new user activates their first plan (see
+        // PaymentController::confirmCheckout()), so a referral link being
+        // used doesn't earn anything on its own until it actually converts.
         //
-        // Every outcome (credited, skipped, referrer missing) is logged
+        // Every outcome (linked, skipped, referrer missing) is logged
         // so a "my referral didn't show up" report can be diagnosed from
         // storage/logs/laravel.log instead of guessing blind.
         if (!empty($data['referral_code'])) {
@@ -50,27 +52,12 @@ class AuthController extends Controller
                     'new_user_id' => $user->id,
                 ]);
             } else {
-                $plan = Plans::find($referrer->current_plan);
+                $user->update(['referred_by' => $referrer->id]);
 
-                if (!$plan) {
-                    Log::warning('Referral bonus skipped: referrer has no active plan', [
-                        'referrer_id' => $referrer->id,
-                        'referrer_current_plan' => $referrer->current_plan,
-                        'new_user_id' => $user->id,
-                    ]);
-                } else {
-                    Referral::create([
-                        'referrer_id' => $referrer->id,
-                        'referred_name' => $user->name,
-                        'bonus_amount' => $plan['referralBonus'],
-                    ]);
-
-                    Log::info('Referral bonus credited', [
-                        'referrer_id' => $referrer->id,
-                        'new_user_id' => $user->id,
-                        'bonus_amount' => $plan['referralBonus'],
-                    ]);
-                }
+                Log::info('Referral link recorded (bonus pending plan activation)', [
+                    'referrer_id' => $referrer->id,
+                    'new_user_id' => $user->id,
+                ]);
             }
         }
 

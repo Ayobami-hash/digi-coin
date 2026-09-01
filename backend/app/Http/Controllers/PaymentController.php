@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Referral;
 use App\Support\Plans;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
@@ -94,8 +96,52 @@ class PaymentController extends Controller
             return response()->json(['error' => 'Transaction does not belong to the current user'], 403);
         }
 
+        // Capture this BEFORE overwriting current_plan, so we know whether
+        // this is genuinely the user's first-ever activation (and
+        // therefore whether a pending referral bonus should fire).
+        $wasFirstActivation = is_null($user->current_plan);
+
         $user->current_plan = $plan['id'];
         $user->save();
+
+        // Pay out the referral bonus now — not at signup. This only fires
+        // when all of the following hold:
+        // 1. The user was referred by someone (referred_by is set), AND
+        // 2. This is their first-ever plan activation (prevents repeat
+        //    bonuses on renewals/upgrades), AND
+        // 3. The referrer currently has an active plan (existing bonus
+        //    eligibility rule, unchanged from before).
+        if ($wasFirstActivation && $user->referred_by) {
+            $referrer = \App\Models\User::find($user->referred_by);
+
+            if (!$referrer) {
+                Log::warning('Referral bonus skipped: referrer no longer exists', [
+                    'referred_user_id' => $user->id,
+                    'referred_by' => $user->referred_by,
+                ]);
+            } else {
+                $referrerPlan = Plans::find($referrer->current_plan);
+
+                if (!$referrerPlan) {
+                    Log::warning('Referral bonus skipped: referrer has no active plan', [
+                        'referrer_id' => $referrer->id,
+                        'referred_user_id' => $user->id,
+                    ]);
+                } else {
+                    Referral::create([
+                        'referrer_id' => $referrer->id,
+                        'referred_name' => $user->name,
+                        'bonus_amount' => $referrerPlan['referralBonus'],
+                    ]);
+
+                    Log::info('Referral bonus credited on plan activation', [
+                        'referrer_id' => $referrer->id,
+                        'referred_user_id' => $user->id,
+                        'bonus_amount' => $referrerPlan['referralBonus'],
+                    ]);
+                }
+            }
+        }
 
         return response()->json([
             'success' => true,
