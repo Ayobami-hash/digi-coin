@@ -6,6 +6,7 @@ import TaskRewardBox from "./components/TaskRewardBox";
 import ReferralRewardBox from "./components/ReferralRewardBox";
 import ReferralListSection from "./components/ReferralListSection";
 import { fetchTaskStatus, fetchReferralStatus } from "./lib/rewardsApi";
+import { api } from "./lib/api";
 
 const TIERS = [
   { threshold: 1, reward: 50, label: "First referral" },
@@ -19,7 +20,8 @@ function nextTier(count) {
 }
 
 export default function DigiCoinApp() {
-  // `user` is the authenticated Laravel user (from Sanctum session).
+  // `user` is the authenticated Laravel user (via Sanctum bearer token,
+  // attached automatically by the `api` Axios instance's interceptor).
   const { user, logout } = useAuth();
 
   const [copied, setCopied] = useState(false);
@@ -28,12 +30,6 @@ export default function DigiCoinApp() {
   const [currentPlan, setCurrentPlan] = useState(null);
   const [tasksLocked, setTasksLocked] = useState(true);
 
-  // Lightweight summary numbers for the header stats row — the
-  // TaskRewardBox/ReferralRewardBox/ReferralListSection components below
-  // fetch their own detailed data independently.
-  // NOTE: these track each source's *available* (withdrawable) balance,
-  // not lifetime earnings — lifetime totals would double-count money
-  // that's already been withdrawn.
   const [monthTaskTotal, setMonthTaskTotal] = useState(0);
   const [referralCount, setReferralCount] = useState(0);
   const [referralTotal, setReferralTotal] = useState(0);
@@ -52,18 +48,13 @@ export default function DigiCoinApp() {
     }
   }
 
-  // Fetch user's current plan once we know who they are
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        const url = new URL("/api/user/" + user.id + "/plan", import.meta.env.VITE_API_URL);
-        const response = await fetch(url.toString(), { credentials: "include" });
-        if (response.ok) {
-          const data = await response.json();
-          setCurrentPlan(data.currentPlan);
-          setTasksLocked(Boolean(data.tasksLocked));
-        }
+        const { data } = await api.get(`/api/user/${user.id}/plan`);
+        setCurrentPlan(data.currentPlan);
+        setTasksLocked(Boolean(data.tasksLocked));
       } catch (err) {
         console.error("Error fetching plan:", err);
       }
@@ -71,7 +62,6 @@ export default function DigiCoinApp() {
     loadSummary();
   }, [user?.id]);
 
-  // Detect Paystack redirect results and confirm checkout if needed
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const reference = params.get("reference");
@@ -89,22 +79,16 @@ export default function DigiCoinApp() {
 
     async function confirmCheckout() {
       try {
-        const url = new URL("/api/confirm-checkout", import.meta.env.VITE_API_URL);
-        url.searchParams.append("reference", reference);
-
-        const response = await fetch(url.toString(), { credentials: "include" });
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Payment confirmation failed.");
-        }
+        const { data } = await api.get("/api/confirm-checkout", {
+          params: { reference },
+        });
 
         setCurrentPlan(data.currentPlan);
         setTasksLocked(Boolean(data.tasksLocked));
         setError("");
         loadSummary();
       } catch (err) {
-        setError(err.message || "Could not confirm payment");
+        setError(err.response?.data?.error || err.message || "Could not confirm payment");
         console.error("Error confirming Paystack checkout:", err);
       } finally {
         clearParams();
@@ -120,7 +104,7 @@ export default function DigiCoinApp() {
 
   function handleCopy() {
     if (!user) return;
-    const code = user.referral_code || user.id; // fallback until referral_code column exists
+    const code = user.referral_code || user.id;
     const link = `${window.location.origin}/?ref=${code}`;
     navigator.clipboard?.writeText(link).catch(() => {});
     setCopied(true);
@@ -131,7 +115,7 @@ export default function DigiCoinApp() {
   const upcoming = nextTier(referralCount);
   const referralCode = user?.referral_code || `USER-${user?.id ?? "----"}`;
 
-  if (!user) return null; // Gate in App.jsx already handles unauthenticated state
+  if (!user) return null;
 
   return (
     <div className="dc-page" style={styles.page}>
@@ -263,7 +247,6 @@ export default function DigiCoinApp() {
             </div>
           </div>
 
-          {/* Real backend-driven reward boxes */}
           <TaskRewardBox />
           <ReferralRewardBox />
           <ReferralListSection />
