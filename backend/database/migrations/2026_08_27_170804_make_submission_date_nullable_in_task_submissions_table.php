@@ -8,15 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('task_submissions', function (Blueprint $table) {
-            $table->date('submission_date')->nullable()->change();
-        });
+        if (Schema::hasColumn('task_submissions', 'submission_date')) {
+            Schema::table('task_submissions', function (Blueprint $table) {
+                $table->date('submission_date')->nullable()->change();
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('task_submissions', function (Blueprint $table) {
-            $table->date('submission_date')->nullable(false)->change();
-        });
+        if (Schema::hasColumn('task_submissions', 'submission_date')) {
+            Schema::table('task_submissions', function (Blueprint $table) {
+                $table->date('submission_date')->nullable(false)->change();
+            });
+        }
     }
 };
