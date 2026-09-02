@@ -63,8 +63,25 @@ class AdminTaskController extends Controller
     }
 
     // DELETE /api/admin/tasks/{task}
+    //
+    // Deleting a task previously cascade-deleted every TaskSubmission tied
+    // to it (via the task_id/daily_task_id foreign keys), which silently
+    // erased users' already-earned, already-approved reward history and
+    // pulled real money out of their running balance. To prevent that from
+    // ever happening again, a task with any submission history — pending,
+    // approved, or rejected — can no longer be hard-deleted. Use
+    // updateTask() to set is_active = false instead, which removes it from
+    // the daily rotation without touching historical earnings.
     public function destroyTask(Task $task)
     {
+        $hasSubmissions = TaskSubmission::where('task_id', $task->id)->exists();
+
+        if ($hasSubmissions) {
+            return response()->json([
+                'message' => 'This task has submission history and cannot be deleted, since doing so would erase users\' already-earned rewards. Deactivate it instead to remove it from rotation.',
+            ], 422);
+        }
+
         $task->delete();
 
         return response()->json([
