@@ -7,6 +7,11 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
+    /**
+     * Look up the real foreign key constraint name on a given column,
+     * since MySQL may not always use Laravel's default naming
+     * convention (this differs between environments/history).
+     */
     private function findForeignKey(string $table, string $column): ?string
     {
         $result = DB::select("
@@ -38,10 +43,17 @@ return new class extends Migration
             });
         }
 
+        // Both columns must be nullable before a SET NULL foreign key can
+        // be added. daily_task_id was historically created as NOT NULL by
+        // an earlier migration, regardless of environment, so this is
+        // forced explicitly rather than assumed.
         Schema::table('task_submissions', function (Blueprint $table) {
             $table->foreignId('task_id')->nullable()->change();
-            $table->foreign('task_id')->references('id')->on('tasks')->nullOnDelete();
+            $table->foreignId('daily_task_id')->nullable()->change();
+        });
 
+        Schema::table('task_submissions', function (Blueprint $table) {
+            $table->foreign('task_id')->references('id')->on('tasks')->nullOnDelete();
             $table->foreign('daily_task_id')->references('id')->on('daily_tasks')->nullOnDelete();
         });
     }
